@@ -68,31 +68,6 @@ class BankAccount(models.Model):
     def __str__(self):
         return f"{self.name} ({self.company.name})"
     
-class Transaction(models.Model):
-    TRANSACTION_TYPE_CHOICES = [
-        ('entrada', 'Entrada'),
-        ('saida', 'Saída'),
-    ]
-
-    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='transactions')
-    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='transactions', help_text="Usuário que registrou a transação")
-    description = models.CharField(max_length=255, verbose_name="Descrição")
-    amount = models.DecimalField(max_digits=15, decimal_places=2, verbose_name="Valor")
-    transaction_date = models.DateField(verbose_name="Data da Transação")
-    type = models.CharField(max_length=7, choices=TRANSACTION_TYPE_CHOICES, verbose_name="Tipo")
-    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions', verbose_name="Categoria")
-    bank_account = models.ForeignKey(BankAccount, on_delete=models.PROTECT, related_name='transactions', verbose_name="Conta")
-    notes = models.TextField(blank=True, null=True, verbose_name="Observações")
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        verbose_name = "Transação"
-        verbose_name_plural = "Transações"
-        ordering = ['-transaction_date', '-created_at']
-
-    def __str__(self):
-        return f"{self.description} - {self.amount}"
-    
 class CreditCard(models.Model):
     CARD_BRAND_CHOICES = [
         ('Visa', 'Visa'),
@@ -122,3 +97,65 @@ class CreditCard(models.Model):
 
     def __str__(self):
         return f"{self.name} (final {self.last_digits})"
+    
+class Transaction(models.Model):
+    TRANSACTION_TYPE_CHOICES = [
+        ('entrada', 'Entrada'),
+        ('saida', 'Saída'),
+    ]
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='transactions')
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='transactions', help_text="Usuário que registrou a transação")
+    description = models.CharField(max_length=255, verbose_name="Descrição")
+    amount = models.DecimalField(max_digits=15, decimal_places=2, verbose_name="Valor")
+    transaction_date = models.DateField(verbose_name="Data da Transação")
+    type = models.CharField(max_length=7, choices=TRANSACTION_TYPE_CHOICES, verbose_name="Tipo")
+    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions', verbose_name="Categoria")
+    bank_account = models.ForeignKey(BankAccount, on_delete=models.PROTECT, related_name='transactions', verbose_name="Conta")
+    credit_card = models.ForeignKey(CreditCard, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions')
+    notes = models.TextField(blank=True, null=True, verbose_name="Observações")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Transação"
+        verbose_name_plural = "Transações"
+        ordering = ['-transaction_date', '-created_at']
+
+    def __str__(self):
+        return f"{self.description} - {self.amount}"
+    
+
+    
+
+class Payable(models.Model):
+    STATUS_CHOICES = [
+        ('pendente', 'Pendente'),
+        ('pago', 'Pago'),
+        ('vencido', 'Vencido'),
+    ]
+    
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='payables')
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='payables')
+    transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE, null=True, blank=True, related_name="payables", verbose_name="Transação de Origem (Cartão)")
+    
+    description = models.CharField(max_length=255, verbose_name="Descrição")
+    amount = models.DecimalField(max_digits=15, decimal_places=2, verbose_name="Valor a Pagar")
+    due_date = models.DateField(verbose_name="Data de Vencimento")
+    payment_date = models.DateField(null=True, blank=True, verbose_name="Data de Pagamento")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pendente')
+    
+    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True)
+    # Se for pago via débito em conta
+    paid_from_account = models.ForeignKey(BankAccount, on_delete=models.SET_NULL, null=True, blank=True, related_name='paid_payables')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Conta a Pagar"
+        verbose_name_plural = "Contas a Pagar"
+        ordering = ['due_date']
+
+    def __str__(self):
+        return f"{self.description} - Venc: {self.due_date}"
+    
+

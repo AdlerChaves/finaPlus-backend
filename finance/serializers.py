@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Category, BankAccount, Transaction, CreditCard
+from .models import Category, BankAccount, Transaction, CreditCard, Payable
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -52,3 +52,12 @@ class CreditCardSerializer(serializers.ModelSerializer):
 
     def get_status_display(self, obj):
         return "Ativo" if obj.is_active else "Inativo"
+    
+
+class PayableSerializer(serializers.ModelSerializer):
+    category_name = serializers.CharField(source='category.name', read_only=True)
+
+    class Meta:
+        model = Payable
+        fields = '__all__' # Por enquanto, vamos expor todos os campos
+        read_only_fields = ['company', 'user']
