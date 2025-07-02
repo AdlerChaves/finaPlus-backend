@@ -5,6 +5,5 @@ class AccountsConfig(AppConfig):
     name = 'accounts'
 
     def ready(self):
-        # Adicione esta linha para teste
-        print("====== CARREGANDO SINAIS DA APP ACCOUNTS ======") 
+       
         import accounts.signals

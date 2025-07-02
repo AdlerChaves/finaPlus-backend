@@ -54,10 +54,28 @@ class CreditCardSerializer(serializers.ModelSerializer):
         return "Ativo" if obj.is_active else "Inativo"
     
 
+class TransactionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Transaction
+        fields = '__all__'
+
 class PayableSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
+    transaction_date = serializers.DateField(source='transaction.transaction_date', read_only=True)
+    
+    transaction = TransactionSerializer(read_only=True)
 
     class Meta:
         model = Payable
-        fields = '__all__' # Por enquanto, vamos expor todos os campos
-        read_only_fields = ['company', 'user']
+        # A lista de fields foi corrigida abaixo
+        fields = [
+            'id', 
+            'description', 
+            'amount', 
+            'due_date', 
+            'status', 
+            'category', 
+            'category_name', 
+            'transaction',
+            'transaction_date'
+        ]

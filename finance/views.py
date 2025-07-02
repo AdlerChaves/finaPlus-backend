@@ -1,5 +1,6 @@
 from rest_framework.decorators import action
-from decimal import Decimal
+from django.db.models import Sum, Q
+from decimal import Decimal, InvalidOperation   
 from rest_framework.views import APIView
 from django.db.models import ProtectedError
 from django.db import models
@@ -75,12 +76,15 @@ class TransactionViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # ... (esta função não precisa de alterações) ...
         user = self.request.user
         queryset = Transaction.objects.filter(company=user.company)
-        transaction_type = self.request.query_params.get('type')
-        if transaction_type:
-            queryset = queryset.filter(type=transaction_type)
+
+        # O parâmetro da URL ainda é 'type'
+        transaction_type_filter = self.request.query_params.get('type')
+        if transaction_type_filter:
+            # A correção é usar o nome correto do campo do modelo: 'transaction_type'
+            queryset = queryset.filter(transaction_type=transaction_type_filter)
+
         return queryset
 
     def perform_create(self, serializer):
@@ -123,22 +127,49 @@ class CreditCardViewSet(viewsets.ModelViewSet):
         serializer.save(company=self.request.user.company)
 
 class PayableViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para gerenciar contas a pagar (Payables).
+    """
     serializer_class = PayableSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # ... (sua lógica de get_queryset permanece a mesma) ...
-        return Payable.objects.filter(company=self.request.user.company)
+        """
+        Sobrescreve o método get_queryset para filtrar as contas
+        pela empresa do usuário logado e, opcionalmente, por mês e ano.
+        """
+        # Filtra pela empresa do usuário
+        queryset = Payable.objects.filter(company=self.request.user.company)
+
+        month = self.request.query_params.get('month', None)
+        year = self.request.query_params.get('year', None)
+
+        if month is not None and year is not None:
+            try:
+                month = int(month)
+                year = int(year)
+                # Filtra apenas as contas manuais (sem transação de cartão)
+                queryset = queryset.filter(
+                    due_date__year=year,
+                    due_date__month=month,
+                    transaction__isnull=True
+                )
+            except (ValueError, TypeError):
+                pass
+        
+        # A função get_queryset DEVE retornar o queryset
+        return queryset.order_by('due_date')
 
     def perform_create(self, serializer):
-        # ... (sua lógica de perform_create permanece a mesma) ...
-        serializer.save(company=self.request.user.company, user=self.request.user)
+        """
+        Associa a empresa do usuário ao criar uma nova conta a pagar manual.
+        Esta função não deve retornar nada.
+        """
+        serializer.save(company=self.request.user.company)
 
-# --- NOVA VIEW DEDICADA PARA MARCAR COMO PAGO ---
 class MarkAsPaidView(APIView):
     """
     View específica para marcar uma conta a pagar como paga.
-    Agora aceita bank_account_id, payment_date e amount.
     """
     permission_classes = [IsAuthenticated]
 
@@ -152,7 +183,6 @@ class MarkAsPaidView(APIView):
         if payable.status == 'pago':
             return Response({'error': 'Esta conta já foi marcada como paga.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 1. Captura os novos dados da requisição
         bank_account_id = request.data.get('bank_account_id')
         payment_date_str = request.data.get('payment_date')
         paid_amount_str = request.data.get('amount')
@@ -167,32 +197,24 @@ class MarkAsPaidView(APIView):
         except (BankAccount.DoesNotExist, InvalidOperation, ValueError):
             return Response({'error': 'Dados inválidos fornecidos.'}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Lógica de negócio: por enquanto, consideramos o pagamento integral.
+        # Pagamento parcial não é permitido por enquanto
         if paid_amount != payable.amount:
-            return Response({'error': 'Pagamento parcial ainda não implementado. O valor pago deve ser igual ao valor da conta.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'O valor pago deve ser igual ao valor da conta.'}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
-            # 2. Atualiza a conta a pagar com os dados recebidos
+            # Atualiza a conta a pagar
             payable.status = 'pago'
-            payable.payment_date = payment_date
-            payable.paid_from_account = bank_account
             payable.save()
 
-            # 3. Cria a transação de saída com o valor e data corretos
             Transaction.objects.create(
                 company=company,
-                user=request.user,
                 description=f"Pagamento: {payable.description}",
-                amount=paid_amount, # Usa o valor pago
-                transaction_date=payment_date, # Usa a data do pagamento
-                type='saida',
-                category=payable.category,
+                amount=paid_amount,
+                transaction_date=payment_date,
+                transaction_type='saida', # Corrigido de 'type' para 'transaction_type'
                 bank_account=bank_account
+                
             )
-
-            # 4. Subtrai o valor do saldo da conta bancária
-            bank_account.initial_balance -= paid_amount
-            bank_account.save()
 
         return Response({'success': 'Conta marcada como paga com sucesso.'}, status=status.HTTP_200_OK)
 
@@ -204,77 +226,56 @@ class CreateCardExpenseView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        data = request.data
-        user = request.user
-        company = user.company
+        company = request.user.company
+        description = request.data.get('description')
+        amount_str = request.data.get('amount')
+        installments = int(request.data.get('installments', 1))
+        credit_card_id = request.data.get('credit_card_id')
+        category_id = request.data.get('category_id')
+        transaction_date_str = request.data.get('transaction_date')
 
-        # --- Validação dos campos obrigatórios ---
-        required_fields = ['description', 'amount', 'transaction_date', 'credit_card_id', 'installments', 'category_id']
-        if not all(field in data for field in required_fields):
-            return Response({"error": "Campos obrigatórios ausentes."}, status=status.HTTP_400_BAD_REQUEST)
+        # Validações de entrada
+        if not all([description, amount_str, credit_card_id, category_id, transaction_date_str]):
+            return Response({'error': 'Todos os campos são obrigatórios'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # --- Bloco TRY...EXCEPT MELHORADO ---
         try:
-            total_amount = Decimal(data['amount'])
-            installments = int(data['installments'])
-            if installments < 1:
-                return Response({"error": "O número de parcelas deve ser ao menos 1."}, status=status.HTTP_400_BAD_REQUEST)
-            
-            credit_card = CreditCard.objects.get(id=data['credit_card_id'], company=company)
-            category = Category.objects.get(id=data['category_id'], company=company, type='saida')
-            purchase_date = timezone.datetime.strptime(data['transaction_date'], '%Y-%m-%d').date()
+            amount = Decimal(amount_str)
+            credit_card = CreditCard.objects.get(id=credit_card_id, company=company)
+            category = Category.objects.get(id=category_id, company=company)
+            transaction_date = timezone.datetime.strptime(transaction_date_str, '%Y-%m-%d').date()
+        except (CreditCard.DoesNotExist, Category.DoesNotExist):
+            return Response({'error': 'Cartão de crédito ou categoria não encontrados.'}, status=status.HTTP_404_NOT_FOUND)
+        except (InvalidOperation, ValueError):
+            return Response({'error': 'Dados inválidos.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        except CreditCard.DoesNotExist:
-            return Response({"error": "O cartão de crédito selecionado não foi encontrado."}, status=status.HTTP_400_BAD_REQUEST)
-        except Category.DoesNotExist:
-            return Response({"error": "A categoria selecionada não foi encontrada ou não é uma categoria de saída."}, status=status.HTTP_400_BAD_REQUEST)
-        except (ValueError, TypeError, InvalidOperation):
-            # Captura erros de conversão de data, número de parcelas ou valor
-            return Response({"error": "Verifique os valores de data, valor e parcelas. Eles parecem ser inválidos."}, status=status.HTTP_400_BAD_REQUEST)
-        
-        
-        # --- Lógica de Negócios ---
         with transaction.atomic():
-            # 1. Cria a transação única com o valor total
+            # Cria a transação principal (a compra original)
+            # --- BLOCO CORRIGIDO ---
             main_transaction = Transaction.objects.create(
                 company=company,
-                user=user,
-                description=data['description'],
-                amount=total_amount,
-                transaction_date=purchase_date,
-                type='saida',
-                category=category,
-                bank_account=credit_card.associated_account,
+                description=f"{description} (Compra Original)",
+                amount=amount,
+                transaction_date=transaction_date,
+                transaction_type='saida', # Corrigido de 'type' para 'transaction_type'
                 credit_card=credit_card
+                # Os campos 'user' e 'category' foram removidos pois não pertencem ao modelo Transaction
             )
 
-            # 2. Calcula as parcelas
-            installment_amount = total_amount / installments
-
-            # 3. Calcula a data de vencimento da primeira fatura
-            first_due_date = purchase_date
-            # Se a compra foi feita no dia do fechamento ou depois, a fatura é no próximo mês
-            if purchase_date.day >= credit_card.closing_day:
-                first_due_date += relativedelta(months=1)
-            
-            # Ajusta o dia do vencimento
-            first_due_date = first_due_date.replace(day=credit_card.due_day)
-
-            # 4. Cria uma conta a pagar para cada parcela
-            for i in range(installments):
-                due_date = first_due_date + relativedelta(months=i)
+            # Cria as parcelas (Payable)
+            installment_amount = amount / installments
+            for i in range(1, installments + 1):
+                due_date = transaction_date + relativedelta(months=i)
                 Payable.objects.create(
                     company=company,
-                    user=user,
-                    transaction=main_transaction, # Link para a transação principal
-                    description=f"{data['description']} ({i+1}/{installments})",
+                    transaction=main_transaction,
+                    description=f"{description} ({i}/{installments})",
                     amount=installment_amount,
                     due_date=due_date,
-                    category=category,
-                    status='pendente'
+                    status='pendente',
+                    category=category
                 )
-        
-        return Response({"success": f"{installments} parcelas criadas com sucesso."}, status=status.HTTP_201_CREATED)
+
+        return Response({'success': 'Despesa registrada e parcelas criadas com sucesso!'}, status=status.HTTP_201_CREATED)
     
 class CardStatementView(APIView):
     """
@@ -385,3 +386,205 @@ class CardBillView(APIView):
         }
 
         return Response(response_data, status=status.HTTP_200_OK)
+    
+class MonthlyBillsView(APIView):
+    """
+    View para buscar e agrupar todas as contas a pagar de um mês,
+    separando contas manuais e faturas de cartão com status de pagamento correto
+    (Pendente, Pago, Vencido).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        month_str = request.query_params.get('month')
+        year_str = request.query_params.get('year')
+
+        if not all([month_str, year_str]):
+            return Response({'error': 'Mês e ano são obrigatórios.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            month = int(month_str)
+            year = int(year_str)
+        except ValueError:
+            return Response({'error': 'Mês e ano devem ser números.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        today = timezone.now().date()
+
+        # 1. Processa as contas manuais
+        manual_bills_qs = Payable.objects.filter(
+            company=request.user.company,
+            due_date__year=year,
+            due_date__month=month,
+            transaction__isnull=True
+        )
+        
+        # Serializa e depois ajusta o status
+        manual_bills_data = PayableSerializer(manual_bills_qs, many=True).data
+        for bill in manual_bills_data:
+            due_date = timezone.datetime.strptime(bill['due_date'], '%Y-%m-%d').date()
+            if bill['status'] != 'pago' and due_date < today:
+                bill['status'] = 'vencido'
+
+        # 2. Lógica aprimorada para faturas de cartão
+        card_bills_data = []
+        active_cards = CreditCard.objects.filter(company=request.user.company, is_active=True)
+
+        for card in active_cards:
+            payables_for_month = Payable.objects.filter(
+                company=request.user.company,
+                transaction__credit_card=card,
+                due_date__year=year,
+                due_date__month=month
+            )
+
+            if payables_for_month.exists():
+                total_amount = payables_for_month.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+                
+                # --- LÓGICA DO STATUS (PAGO, VENCIDO, PENDENTE) ---
+                payment_status = ''
+                all_items_paid = all(p.status == 'pago' for p in payables_for_month)
+                
+                if all_items_paid:
+                    payment_status = 'pago'
+                else:
+                    # Se não está paga, verifica se está vencida
+                    card_due_date = timezone.datetime(year, month, card.due_day).date()
+                    if card_due_date < today:
+                        payment_status = 'vencido'
+                    else:
+                        payment_status = 'pendente'
+
+                card_bills_data.append({
+                    "card_id": card.id,
+                    "card_name": card.name,
+                    "due_day": card.due_day,
+                    "total_amount": total_amount,
+                    "status": payment_status
+                })
+
+        # 3. Formata a resposta final
+        response_data = {
+            "manual_bills": manual_bills_data,
+            "card_bills": card_bills_data
+        }
+
+        return Response(response_data, status=status.HTTP_200_OK)
+    
+class CardBillDetailView(APIView):
+    """
+    View para obter os detalhes completos de uma fatura de cartão de crédito
+    para um mês e ano específicos.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        card_id = request.query_params.get('card_id')
+        month_str = request.query_params.get('month')
+        year_str = request.query_params.get('year')
+
+        if not all([card_id, month_str, year_str]):
+            return Response(
+                {'error': 'Os parâmetros card_id, month e year são obrigatórios.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            card = CreditCard.objects.get(id=card_id, company=request.user.company)
+            month = int(month_str)
+            year = int(year_str)
+        except (CreditCard.DoesNotExist, ValueError):
+            return Response({'error': 'Dados inválidos ou cartão não encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Busca apenas as parcelas (Payable) com vencimento no mês e ano da fatura.
+        bill_items = Payable.objects.filter(
+            company=request.user.company,
+            transaction__credit_card=card,
+            due_date__year=year,
+            due_date__month=month
+        ).select_related('transaction', 'category').order_by('due_date')
+
+        # Calcula o total da fatura
+        total_amount = bill_items.aggregate(total=models.Sum('amount'))['total'] or Decimal('0.00')
+
+        # Lógica para status e valor pago da fatura
+        # Uma fatura é 'paga' se todas as suas parcelas daquele mês estiverem pagas.
+        bill_status = 'pago' if bill_items.exists() and all(item.status == 'pago' for item in bill_items) else 'pendente'
+        paid_amount = sum(item.amount for item in bill_items if item.status == 'pago')
+
+        # Monta a resposta final
+        response_data = {
+            'card_name': f"{card.name} (final {card.last_digits})",
+            'bill_period': f"{month:02d}/{year}",
+            'due_date': f"{card.due_day:02d}/{month:02d}/{year}",
+            'total_amount': total_amount,
+            'paid_amount': paid_amount,
+            'status': bill_status,
+            'transactions': PayableSerializer(bill_items, many=True).data,
+            # A chave 'installments' agora retorna os mesmos itens da fatura,
+            # garantindo que apenas as parcelas do mês sejam exibidas.
+            'installments': PayableSerializer(bill_items, many=True).data
+        }
+
+        return Response(response_data, status=status.HTTP_200_OK)
+    
+
+class PayCardBillView(APIView):
+    """
+    Endpoint para registrar o pagamento de uma fatura de cartão de crédito.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, *args, **kwargs):
+        card_id = request.data.get('card_id')
+        month_str = request.data.get('month') # Renomeado para indicar que é string
+        year_str = request.data.get('year')   # Renomeado para indicar que é string
+        bank_account_id = request.data.get('bank_account_id')
+        amount_paid = request.data.get('amount')
+        payment_date = request.data.get('payment_date')
+
+        if not all([card_id, month_str, year_str, bank_account_id, amount_paid, payment_date]):
+            return Response(
+                {'error': 'Todos os campos são obrigatórios.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # --- LINHAS CORRIGIDAS ABAIXO ---
+            month = int(month_str)
+            year = int(year_str)
+            card = CreditCard.objects.get(id=card_id, company=request.user.company)
+            bank_account = BankAccount.objects.get(id=bank_account_id, company=request.user.company)
+            amount_paid_decimal = Decimal(amount_paid)
+        except (CreditCard.DoesNotExist, BankAccount.DoesNotExist):
+            return Response({'error': 'Cartão ou conta bancária não encontrados.'}, status=status.HTTP_404_NOT_FOUND)
+        except (InvalidOperation, ValueError): # Adicionado ValueError para capturar erro de conversão
+            return Response({'error': 'Dados de entrada inválidos (valor, mês ou ano).'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Encontra todas as parcelas (Payable) que compõem a fatura
+        payables_to_update = Payable.objects.filter(
+            company=request.user.company,
+            transaction__credit_card=card,
+            due_date__year=year,
+            due_date__month=month,
+            status__in=['pendente', 'vencido']
+        )
+
+        if not payables_to_update.exists():
+            return Response({'error': 'Não há faturas pendentes para este período.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Agora a formatação funcionará corretamente, pois 'month' e 'year' são inteiros
+        Transaction.objects.create(
+            company=request.user.company,
+            bank_account=bank_account,
+            description=f"Pagamento Fatura {card.name} - {month:02d}/{year}",
+            amount=amount_paid_decimal,
+            transaction_type='saida',
+            transaction_date=payment_date
+        )
+        
+        payables_to_update.update(status='pago')
+
+        return Response({'success': 'Fatura paga com sucesso!'}, status=status.HTTP_200_OK)
+
+    

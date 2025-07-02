@@ -6,7 +6,7 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
-from finance.views import CreateCardExpenseView, MarkAsPaidView, CardStatementView, CardBillView
+from finance.views import CreateCardExpenseView, MarkAsPaidView, CardStatementView, CardBillView, MonthlyBillsView, CardBillDetailView, PayCardBillView
 
 urlpatterns = [
     path('', home, name='home'),
@@ -21,6 +21,12 @@ urlpatterns = [
     path('api/finance/card-statement/', CardStatementView.as_view(), name='card-statement'),
     path('api/finance/card-expense/', CreateCardExpenseView.as_view(), name='create-card-expense'),
     path('api/finance/card-bill/', CardBillView.as_view(), name='card-bill'),
+    path('api/finance/monthly-bills/', MonthlyBillsView.as_view(), name='monthly-bills'),
+    path('api/finance/card-bill-detail/', CardBillDetailView.as_view(), name='card-bill-detail'),
+    path('api/finance/pay-card-bill/', PayCardBillView.as_view(), name='pay-card-bill'),
+
+
+      
 
 
     # A rota geral para o router vem por último.

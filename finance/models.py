@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 from django.core.validators import MinValueValidator, MaxValueValidator
 from accounts.models import User, Company
 
@@ -102,13 +103,13 @@ class Transaction(models.Model):
     TRANSACTION_TYPE_CHOICES = [
         ('entrada', 'Entrada'),
         ('saida', 'Saída'),
-    ]
+    ] 
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='transactions')
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='transactions', help_text="Usuário que registrou a transação")
     description = models.CharField(max_length=255, verbose_name="Descrição")
     amount = models.DecimalField(max_digits=15, decimal_places=2, verbose_name="Valor")
-    transaction_date = models.DateField(verbose_name="Data da Transação")
+    transaction_date = models.DateField(default=timezone.now)
     type = models.CharField(max_length=7, choices=TRANSACTION_TYPE_CHOICES, verbose_name="Tipo")
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions', verbose_name="Categoria")
     bank_account = models.ForeignKey(BankAccount, on_delete=models.PROTECT, related_name='transactions', verbose_name="Conta")
