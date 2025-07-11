@@ -14,10 +14,7 @@ from .serializers import CategorySerializer, BankAccountSerializer, TransactionS
 from dateutil.relativedelta import relativedelta
 
 class CategoryViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint que permite que as categorias sejam visualizadas ou editadas.
-    AGORA SUPORTA FILTRO POR TIPO (entrada/saida).
-    """
+    
     serializer_class = CategorySerializer
     permission_classes = [IsAuthenticated]
 
@@ -29,7 +26,6 @@ class CategoryViewSet(viewsets.ModelViewSet):
         user = self.request.user
         queryset = Category.objects.filter(company=user.company)
         
-        # --- LÓGICA DE FILTRO ADICIONADA AQUI ---
         category_type = self.request.query_params.get('type')
         if category_type:
             queryset = queryset.filter(type=category_type)
@@ -38,9 +34,10 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """
-        Associa a categoria à empresa do usuário ao criar.
+        CORREÇÃO: Associa tanto o usuário quanto a empresa à nova categoria.
         """
-        serializer.save(company=self.request.user.company)
+        serializer.save(user=self.request.user, company=self.request.user.company)
+
 
 
 
@@ -75,43 +72,33 @@ class TransactionViewSet(viewsets.ModelViewSet):
     serializer_class = TransactionSerializer
     permission_classes = [IsAuthenticated]
 
+
     def get_queryset(self):
         user = self.request.user
         queryset = Transaction.objects.filter(company=user.company)
 
-        # O parâmetro da URL ainda é 'type'
         transaction_type_filter = self.request.query_params.get('type')
         if transaction_type_filter:
-            # A correção é usar o nome correto do campo do modelo: 'transaction_type'
-            queryset = queryset.filter(transaction_type=transaction_type_filter)
+            # A correção é usar o nome correto do campo do modelo: 'type'
+            queryset = queryset.filter(type=transaction_type_filter)
+
+        # Lógica de filtro por data (se você já a implementou)
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+
+        if start_date and end_date:
+            queryset = queryset.filter(transaction_date__range=[start_date, end_date])
 
         return queryset
 
     def perform_create(self, serializer):
-        """
-        Garante que a criação da transação e a atualização do saldo da conta
-        aconteçam de forma segura e atómica.
-        """
-        # 'atomic' garante que se algo falhar, tudo é desfeito.
+        
         with transaction.atomic():
-            # 1. Salva a nova transação e a associa ao usuário/empresa
+            
             new_transaction = serializer.save(
                 company=self.request.user.company, 
                 user=self.request.user
             )
-
-            # 2. Pega a conta bancária associada à transação
-            bank_account = new_transaction.bank_account
-            
-            # --- A LÓGICA CHAVE ESTÁ AQUI ---
-            # 3. Verifica o tipo da transação e atualiza o saldo
-            if new_transaction.type == 'saida':
-                bank_account.initial_balance -= new_transaction.amount # Subtrai se for saída
-            elif new_transaction.type == 'entrada':
-                bank_account.initial_balance += new_transaction.amount # SOMA se for entrada
-            
-            # 4. Salva a conta bancária com o novo saldo atualizado
-            bank_account.save()
 
 class CreditCardViewSet(viewsets.ModelViewSet):
     """
@@ -130,6 +117,7 @@ class PayableViewSet(viewsets.ModelViewSet):
     """
     ViewSet para gerenciar contas a pagar (Payables).
     """
+    queryset = Payable.objects.all()
     serializer_class = PayableSerializer
     permission_classes = [IsAuthenticated]
 
@@ -161,11 +149,9 @@ class PayableViewSet(viewsets.ModelViewSet):
         return queryset.order_by('due_date')
 
     def perform_create(self, serializer):
-        """
-        Associa a empresa do usuário ao criar uma nova conta a pagar manual.
-        Esta função não deve retornar nada.
-        """
+        
         serializer.save(company=self.request.user.company)
+        serializer.save(user=self.request.user)
 
 class MarkAsPaidView(APIView):
     """
@@ -206,12 +192,12 @@ class MarkAsPaidView(APIView):
             payable.status = 'pago'
             payable.save()
 
-            Transaction.objects.create(
+            Transaction.objects.create( 
                 company=company,
                 description=f"Pagamento: {payable.description}",
                 amount=paid_amount,
                 transaction_date=payment_date,
-                transaction_type='saida', # Corrigido de 'type' para 'transaction_type'
+                type='saida', 
                 bank_account=bank_account
                 
             )
@@ -252,11 +238,12 @@ class CreateCardExpenseView(APIView):
             # Cria a transação principal (a compra original)
             # --- BLOCO CORRIGIDO ---
             main_transaction = Transaction.objects.create(
+                user=request.user, 
                 company=company,
                 description=f"{description} (Compra Original)",
                 amount=amount,
                 transaction_date=transaction_date,
-                transaction_type='saida', # Corrigido de 'type' para 'transaction_type'
+                type='saida', 
                 credit_card=credit_card
                 # Os campos 'user' e 'category' foram removidos pois não pertencem ao modelo Transaction
             )
@@ -266,6 +253,7 @@ class CreateCardExpenseView(APIView):
             for i in range(1, installments + 1):
                 due_date = transaction_date + relativedelta(months=i)
                 Payable.objects.create(
+                    user=request.user,
                     company=company,
                     transaction=main_transaction,
                     description=f"{description} ({i}/{installments})",
@@ -573,18 +561,19 @@ class PayCardBillView(APIView):
         if not payables_to_update.exists():
             return Response({'error': 'Não há faturas pendentes para este período.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Agora a formatação funcionará corretamente, pois 'month' e 'year' são inteiros
         Transaction.objects.create(
+            user=request.user,
             company=request.user.company,
             bank_account=bank_account,
             description=f"Pagamento Fatura {card.name} - {month:02d}/{year}",
             amount=amount_paid_decimal,
-            transaction_type='saida',
+            type='saida',
             transaction_date=payment_date
         )
         
         payables_to_update.update(status='pago')
 
         return Response({'success': 'Fatura paga com sucesso!'}, status=status.HTTP_200_OK)
+    
 
     

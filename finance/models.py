@@ -1,5 +1,7 @@
 from django.db import models
 from django.utils import timezone
+from django.db.models.signals import post_init 
+from django.dispatch import receiver
 from django.core.validators import MinValueValidator, MaxValueValidator
 from accounts.models import User, Company
 
@@ -29,6 +31,7 @@ class Category(models.Model):
     ]
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='categories')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
     name = models.CharField(max_length=100)
     type = models.CharField(max_length=7, choices=TYPE_CHOICES)
     dre_classification = models.CharField(max_length=30, choices=DRE_CHOICES)
@@ -103,27 +106,35 @@ class Transaction(models.Model):
     TRANSACTION_TYPE_CHOICES = [
         ('entrada', 'Entrada'),
         ('saida', 'Saída'),
-    ] 
+    ]
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='transactions')
-    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='transactions', help_text="Usuário que registrou a transação")
-    description = models.CharField(max_length=255, verbose_name="Descrição")
-    amount = models.DecimalField(max_digits=15, decimal_places=2, verbose_name="Valor")
+    user = models.ForeignKey(User, on_delete=models.CASCADE) 
+    description = models.CharField(max_length=255)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
     transaction_date = models.DateField(default=timezone.now)
-    type = models.CharField(max_length=7, choices=TRANSACTION_TYPE_CHOICES, verbose_name="Tipo")
-    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions', verbose_name="Categoria")
-    bank_account = models.ForeignKey(BankAccount, on_delete=models.PROTECT, related_name='transactions', verbose_name="Conta")
-    credit_card = models.ForeignKey(CreditCard, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions')
-    notes = models.TextField(blank=True, null=True, verbose_name="Observações")
-    created_at = models.DateTimeField(auto_now_add=True)
+    type = models.CharField(max_length=7, choices=TRANSACTION_TYPE_CHOICES, default='saida') 
+    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True) 
+    notes = models.TextField(blank=True, null=True) 
+    bank_account = models.ForeignKey(BankAccount, on_delete=models.CASCADE, null=True, blank=True)
+    credit_card = models.ForeignKey(CreditCard, on_delete=models.CASCADE, null=True, blank=True, related_name='transactions')
+    
 
     class Meta:
         verbose_name = "Transação"
         verbose_name_plural = "Transações"
-        ordering = ['-transaction_date', '-created_at']
 
     def __str__(self):
         return f"{self.description} - {self.amount}"
+    
+@receiver(post_init, sender=Transaction)
+def store_original_state(sender, instance, **kwargs):
+    
+    instance._original_state = {
+        'amount': instance.amount,
+        'type': instance.type,
+        'bank_account_id': instance.bank_account_id
+    }
     
 
     

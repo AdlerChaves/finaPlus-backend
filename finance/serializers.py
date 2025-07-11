@@ -4,10 +4,10 @@ from .models import Category, BankAccount, Transaction, CreditCard, Payable
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        # O campo 'company' será preenchido automaticamente pela view, não pelo usuário
-        fields = ['id', 'name', 'type', 'dre_classification', 'dfc_classification']
-        read_only_fields = ['company']
-
+       
+        fields = ['id', 'name', 'type', 'user', 'company', 'dre_classification', 'dfc_classification'] 
+        
+        read_only_fields = ['user', 'company']
 
 class BankAccountSerializer(serializers.ModelSerializer):
     # Transforma o valor booleano em um texto mais legível na resposta da API
@@ -23,18 +23,54 @@ class BankAccountSerializer(serializers.ModelSerializer):
         return "Ativa" if obj.is_active else "Inativa"
     
 class TransactionSerializer(serializers.ModelSerializer):
-    # Para mostrar os nomes em vez dos IDs na resposta da API
-    category_name = serializers.CharField(source='category.name', read_only=True)
-    bank_account_name = serializers.CharField(source='bank_account.name', read_only=True)
+
+    category_name = serializers.CharField(source='category.name', read_only=True, required=False)
+    bank_account_name = serializers.CharField(source='bank_account.name', read_only=True, required=False)
+
+    
+    # Adicione estes campos para tratar valores nulos corretamente
+    category = serializers.PrimaryKeyRelatedField(
+        queryset=Category.objects.all(),
+        required=False,
+        allow_null=True
+    )
+    bank_account = serializers.PrimaryKeyRelatedField(
+        queryset=BankAccount.objects.all(),
+        required=False,
+        allow_null=True
+    )
+    credit_card = serializers.PrimaryKeyRelatedField(
+        queryset=CreditCard.objects.all(),
+        required=False,
+        allow_null=True
+    )
 
     class Meta:
         model = Transaction
         fields = [
-            'id', 'description', 'amount', 'transaction_date', 'type', 
-            'category', 'category_name', 'bank_account', 'bank_account_name', 'notes'
+            'id',
+            'description',
+            'amount',
+            'transaction_date',
+            'type',
+            'category',
+            'notes',
+            'bank_account',
+            'credit_card',
+            'user',
+            'company',
+            'category_name',
+            'bank_account_name'
         ]
-        # O usuário e a empresa serão preenchidos automaticamente
-        read_only_fields = ['company', 'user']
+        read_only_fields = ['user', 'company']
+
+    def validate(self, data):
+        """
+        Validação para garantir que ou a conta bancária ou o cartão de crédito seja fornecido.
+        """
+        if not data.get('bank_account') and not data.get('credit_card'):
+            raise serializers.ValidationError("É necessário fornecer uma conta bancária ou um cartão de crédito.")
+        return data
 
 class CreditCardSerializer(serializers.ModelSerializer):
     # Para mostrar o nome da conta na resposta da API
@@ -54,10 +90,6 @@ class CreditCardSerializer(serializers.ModelSerializer):
         return "Ativo" if obj.is_active else "Inativo"
     
 
-class TransactionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Transaction
-        fields = '__all__'
 
 class PayableSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
@@ -79,3 +111,5 @@ class PayableSerializer(serializers.ModelSerializer):
             'transaction',
             'transaction_date'
         ]
+
+        read_only_fields = ['user']

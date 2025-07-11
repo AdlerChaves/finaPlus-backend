@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     
     'accounts.apps.AccountsConfig',
     'finance.apps.FinanceConfig', 
+    'cadastros.apps.CadastrosConfig',
     
 ]
     
