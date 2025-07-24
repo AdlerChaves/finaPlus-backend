@@ -1,13 +1,14 @@
 from rest_framework import viewsets, permissions
 from .models import Customer, Supplier
 from .serializers import CustomerSerializer, SupplierSerializer
+from accounts.permissions import CanEditCadastros
 
 class CustomerViewSet(viewsets.ModelViewSet):
     """
     API endpoint que permite que clientes sejam visualizados ou editados.
     """
     serializer_class = CustomerSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [CanEditCadastros]
 
     def get_queryset(self):
         """
@@ -29,7 +30,7 @@ class SupplierViewSet(viewsets.ModelViewSet):
     API endpoint para visualizar e editar Fornecedores.
     """
     serializer_class = SupplierSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [CanEditCadastros]
 
     def get_queryset(self):
         """

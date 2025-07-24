@@ -1,6 +1,7 @@
 from rest_framework.decorators import action
 from django.db.models import Sum, Q
-from decimal import Decimal, InvalidOperation   
+from decimal import Decimal, InvalidOperation  
+from datetime import timedelta 
 from rest_framework.views import APIView
 from django.db.models import ProtectedError
 from django.db import models
@@ -9,14 +10,16 @@ from django.db import transaction
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from .models import Category, BankAccount, Transaction, CreditCard, Payable
-from .serializers import CategorySerializer, BankAccountSerializer, TransactionSerializer, CreditCardSerializer, PayableSerializer
+from .models import Category, BankAccount, Transaction, CreditCard, Payable, Receivable
+from .serializers import CategorySerializer, BankAccountSerializer, TransactionSerializer, CreditCardSerializer, PayableSerializer, ReceivableSerializer
 from dateutil.relativedelta import relativedelta
+from django.db.models.functions import TruncMonth
+from accounts.permissions import CanEditFinance, CanViewFinance
 
 class CategoryViewSet(viewsets.ModelViewSet):
     
     serializer_class = CategorySerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [CanEditFinance]
 
     def get_queryset(self):
         """
@@ -43,7 +46,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
 class BankAccountViewSet(viewsets.ModelViewSet):
     serializer_class = BankAccountSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [CanEditFinance]
 
     def get_queryset(self):
         return BankAccount.objects.filter(company=self.request.user.company)
@@ -70,7 +73,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
     API endpoint para visualizar e editar transações.
     """
     serializer_class = TransactionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [CanEditFinance]
 
 
     def get_queryset(self):
@@ -105,7 +108,7 @@ class CreditCardViewSet(viewsets.ModelViewSet):
     API endpoint para gerenciar cartões de crédito.
     """
     serializer_class = CreditCardSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [CanEditFinance]
 
     def get_queryset(self):
         return CreditCard.objects.filter(company=self.request.user.company)
@@ -194,6 +197,7 @@ class MarkAsPaidView(APIView):
 
             Transaction.objects.create( 
                 company=company,
+                user=request.user,
                 description=f"Pagamento: {payable.description}",
                 amount=paid_amount,
                 transaction_date=payment_date,
@@ -576,4 +580,332 @@ class PayCardBillView(APIView):
         return Response({'success': 'Fatura paga com sucesso!'}, status=status.HTTP_200_OK)
     
 
+
+class ReceivableViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint para visualizar e gerenciar Contas a Receber.
+    """
+    serializer_class = ReceivableSerializer
+    permission_classes = [IsAuthenticated]
+
+    # --- MÉTODO A SER SUBSTITUÍDO ---
+    def get_queryset(self):
+        """
+        Filtra as contas a receber pela empresa do usuário
+        e aplica filtros de query params.
+        """
+        user = self.request.user
+        queryset = Receivable.objects.filter(company=user.company).select_related('customer')
+
+        # --- INÍCIO DA CORREÇÃO ---
+        # Adicionada a lógica para o filtro por período (mês/ano)
+        period = self.request.query_params.get('period-filter')
+        if period:
+            try:
+                year, month = map(int, period.split('-'))
+                queryset = queryset.filter(due_date__year=year, due_date__month=month)
+            except (ValueError, TypeError):
+                # Ignora o filtro se o formato for inválido
+                pass
+        # --- FIM DA CORREÇÃO ---
+
+        # Filtro por status (lógica existente mantida)
+        status = self.request.query_params.get('status')
+        if status:
+            queryset = queryset.filter(status=status)
+
+        # Filtro por cliente (lógica existente mantida)
+        customer_id = self.request.query_params.get('client_id')
+        if customer_id:
+            queryset = queryset.filter(customer_id=customer_id)
+        
+        # Filtro de busca (lógica existente mantida)
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(description__icontains=search) |
+                Q(customer__name__icontains=search)
+            )
+
+        return queryset.order_by('due_date')
     
+
+class ReceivablesSummaryView(APIView):
+    """
+    View para fornecer um resumo dos dados de Contas a Receber.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        company = request.user.company
+        queryset = Receivable.objects.filter(company=company)
+
+        # Aplica os mesmos filtros da sua lista principal
+        period = request.query_params.get('period-filter')
+        if period:
+            year, month = map(int, period.split('-'))
+            queryset = queryset.filter(due_date__year=year, due_date__month=month)
+
+        # --- CORREÇÃO AQUI ---
+        # A variável foi renomeada de 'status' para 'status_filter'
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+
+        customer_id = request.query_params.get('client_id')
+        if customer_id:
+            queryset = queryset.filter(customer_id=customer_id)
+
+        search = request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(description__icontains=search) | Q(customer__name__icontains=search)
+            )
+
+        # Calcula os totais
+        total_received = queryset.filter(status='received').aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        total_to_receive_qs = queryset.filter(status__in=['pending', 'overdue'])
+        total_to_receive = total_to_receive_qs.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        
+        # Dados para o gráfico
+        summary_by_status = queryset.values('status').annotate(total_amount=Sum('amount')).order_by('status')
+        chart_data = {'labels': [], 'data': []}
+        status_map = {'pending': 'Pendente', 'received': 'Recebido', 'overdue': 'Vencido'}
+
+        for item in summary_by_status:
+            chart_data['labels'].append(status_map.get(item['status'], item['status']))
+            chart_data['data'].append(item['total_amount'])
+
+        response_data = {
+            'total_received': total_received,
+            'total_to_receive': total_to_receive,
+            'chart_data': chart_data
+        }
+
+        # Agora 'status' refere-se corretamente ao módulo importado
+        return Response(response_data, status=status.HTTP_200_OK)
+    
+
+class DashboardView(APIView):
+    
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        company = request.user.company
+        today = timezone.now().date()
+        
+        # --- 1. Cálculos para os Cartões de Resumo ---
+
+        balance_data = BankAccount.objects.filter(company=company, is_active=True).aggregate(
+            total_balance=Sum('initial_balance')
+        )
+        current_balance = balance_data['total_balance'] or Decimal('0.00')
+
+        start_of_month = today.replace(day=1)
+        
+        monthly_income_data = Transaction.objects.filter(
+            company=company, type='entrada', transaction_date__gte=start_of_month
+        ).aggregate(total=Sum('amount'))
+        monthly_income = monthly_income_data['total'] or Decimal('0.00')
+
+        monthly_expenses_data = Transaction.objects.filter(
+            company=company, type='saida', transaction_date__gte=start_of_month
+        ).aggregate(total=Sum('amount'))
+        monthly_expenses = monthly_expenses_data['total'] or Decimal('0.00')
+        
+        monthly_result = monthly_income - monthly_expenses
+        
+        # --- CORREÇÃO: Usando os status em PORTUGUÊS para Contas a Pagar ---
+        payables_data = Payable.objects.filter(
+            company=company,
+            due_date__year=today.year,
+            due_date__month=today.month,
+            status__in=['pendente', 'vencido']  # <-- CORRIGIDO
+        ).aggregate(total=Sum('amount'))
+        total_payables = payables_data['total'] or Decimal('0.00')
+
+        # --- CORREÇÃO: Usando os status em INGLÊS para Contas a Receber ---
+        receivables_data = Receivable.objects.filter(
+            company=company,
+            due_date__year=today.year,
+            due_date__month=today.month,
+            status__in=['pending', 'overdue']  # <-- CORRIGIDO
+        ).aggregate(total=Sum('amount'))
+        total_receivables = receivables_data['total'] or Decimal('0.00')
+
+        # --- 2. Alertas e Insights ---
+        seven_days_from_now = today + timedelta(days=7)
+        
+        # --- CORREÇÃO: Usando os status em PORTUGUÊS para Vencimentos Próximos ---
+        upcoming_payables_qs = Payable.objects.filter(
+            company=company,
+            status__in=['pendente', 'vencido'],  # <-- CORRIGIDO
+            due_date__gte=today,
+            due_date__lte=seven_days_from_now
+        ).order_by('due_date')
+        
+        # --- CORREÇÃO: Usando os status em INGLÊS para Recebimentos Próximos ---
+        upcoming_receivables_qs = Receivable.objects.filter(
+            company=company,
+            status__in=['pending', 'overdue'],  # <-- CORRIGIDO
+            due_date__gte=today,
+            due_date__lte=seven_days_from_now
+        ).order_by('due_date')
+        
+        # --- 3. Últimos Lançamentos ---
+        recent_transactions_qs = Transaction.objects.filter(
+            company=company
+        ).select_related('category', 'bank_account', 'credit_card').order_by('-transaction_date', '-id')[:5]
+
+        # --- 4. Montagem da Resposta ---
+        response_data = {
+            "summary_cards": {
+                "current_balance": current_balance,
+                "monthly_income": monthly_income,
+                "monthly_expenses": monthly_expenses,
+                "monthly_result": monthly_result,
+                "total_payables": total_payables,
+                "total_receivables": total_receivables,
+            },
+            "alerts": {
+                "upcoming_payables": PayableSerializer(upcoming_payables_qs, many=True).data,
+                "upcoming_receivables": ReceivableSerializer(upcoming_receivables_qs, many=True).data
+            },
+            "recent_transactions": TransactionSerializer(recent_transactions_qs, many=True).data,
+            "user_info": {
+            "name": f"{request.user.first_name} {request.user.last_name}".strip()
+        }
+        }
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+    
+
+class IncomeExpenseChartView(APIView):
+    """
+    Fornece dados agregados para o gráfico de Receitas vs. Despesas.
+    Retorna os totais de receitas e despesas dos últimos 6 meses.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        company = request.user.company
+        today = timezone.now().date()
+        
+        # Define o período de 6 meses atrás a partir do primeiro dia do mês atual
+        six_months_ago = today.replace(day=1) - relativedelta(months=5)
+
+        # Agrupa as transações por mês
+        transactions_data = Transaction.objects.filter(
+            company=company,
+            transaction_date__gte=six_months_ago
+        ).annotate(
+            month=TruncMonth('transaction_date')
+        ).values('month', 'type').annotate(
+            total_amount=Sum('amount')
+        ).order_by('month')
+
+        # Estrutura os dados para o gráfico
+        chart_data = {}
+        for item in transactions_data:
+            month_str = item['month'].strftime('%Y-%m')
+            if month_str not in chart_data:
+                chart_data[month_str] = {'income': 0, 'expense': 0}
+            
+            if item['type'] == 'entrada':
+                chart_data[month_str]['income'] = item['total_amount']
+            elif item['type'] == 'saida':
+                chart_data[month_str]['expense'] = item['total_amount']
+        
+        # Garante que todos os 6 meses estejam presentes, mesmo que sem dados
+        labels = []
+        income_data = []
+        expense_data = []
+        current_month = six_months_ago
+        for _ in range(6):
+            month_str = current_month.strftime('%Y-%m')
+            # Formata o label para "Mês/Ano" (ex: "Jul/25")
+            label_formatted = current_month.strftime('%b/%y').capitalize()
+            labels.append(label_formatted)
+            
+            data = chart_data.get(month_str, {'income': 0, 'expense': 0})
+            income_data.append(data['income'])
+            expense_data.append(data['expense'])
+            
+            current_month += relativedelta(months=1)
+            
+        response = {
+            'labels': labels,
+            'income_data': income_data,
+            'expense_data': expense_data,
+        }
+        return Response(response, status=status.HTTP_200_OK)
+    
+class CashFlowChartView(APIView):
+    """
+    Fornece dados para o gráfico de Fluxo de Caixa Acumulado.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        company = request.user.company
+        today = timezone.now().date()
+        
+        # 1. Define o período de 6 meses atrás
+        six_months_ago = today.replace(day=1) - relativedelta(months=5)
+
+        # 2. Calcula o saldo inicial (o saldo total de todas as contas 6 meses atrás)
+        transactions_before_period = Transaction.objects.filter(
+            company=company,
+            transaction_date__lt=six_months_ago
+        )
+        initial_balance = transactions_before_period.aggregate(
+            total=Sum('amount', filter=Q(type='entrada')) - Sum('amount', filter=Q(type='saida'))
+        )['total'] or Decimal('0.00')
+
+        # 3. Pega os totais de entrada e saída de cada mês no período
+        monthly_changes = Transaction.objects.filter(
+            company=company,
+            transaction_date__gte=six_months_ago
+        ).annotate(
+            month=TruncMonth('transaction_date')
+        ).values('month').annotate(
+            total_income=Sum('amount', filter=Q(type='entrada')),
+            total_expense=Sum('amount', filter=Q(type='saida'))
+        ).order_by('month')
+
+        # 4. Calcula o fluxo de caixa acumulado
+        labels = []
+        cumulative_balance_data = []
+        current_balance = initial_balance
+        
+        # Mapeia os resultados para fácil acesso
+        monthly_map = {
+            change['month'].strftime('%Y-%m'): {
+                'income': change['total_income'] or 0,
+                'expense': change['total_expense'] or 0
+            } for change in monthly_changes
+        }
+
+        current_month_iterator = six_months_ago
+        for _ in range(6):
+            month_str = current_month_iterator.strftime('%Y-%m')
+            label_formatted = current_month_iterator.strftime('%b/%y').capitalize()
+            labels.append(label_formatted)
+
+            # Calcula o resultado do mês e atualiza o saldo acumulado
+            month_data = monthly_map.get(month_str, {'income': 0, 'expense': 0})
+            net_change = month_data['income'] - month_data['expense']
+            current_balance += net_change
+            
+            cumulative_balance_data.append(current_balance)
+            
+            current_month_iterator += relativedelta(months=1)
+
+        response = {
+            'labels': labels,
+            'cumulative_balance': cumulative_balance_data,
+        }
+        return Response(response, status=status.HTTP_200_OK)
+
+
+PayableViewSet

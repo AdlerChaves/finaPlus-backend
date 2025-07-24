@@ -11,10 +11,18 @@ class Company(models.Model):
         return self.name
 
 class User(AbstractUser):
-    # Campos adicionais que você pode querer no futuro
-    company = models.ForeignKey(Company, on_delete=models.CASCADE, null=True, blank=True, related_name='users')
+    # CARGOS DEFINIDOS
+    class Role(models.TextChoices):
+        ADMIN = 'admin', 'Administrador'
+        FINANCE = 'finance', 'Financeiro'
+        MANAGER = 'manager', 'Gestor'
+        ANALYST = 'analyst', 'Analista'
+        GENERIC = 'employee', 'Colaborador'
 
-    # Removendo first_name e last_name padrão para usar um campo 'full_name' se preferir
-    # ou pode mantê-los. Para simplificar, vamos usar o padrão por enquanto.
-    pass
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, null=True, blank=True, related_name='users')
+    
+    # NOVOS CAMPOS ADICIONADOS
+    role = models.CharField(max_length=20, choices=Role.choices, default=Role.ADMIN, verbose_name="Cargo")
+    permissions_list = models.JSONField(default=list, blank=True, null=True, verbose_name="Lista de Permissões")
+
 

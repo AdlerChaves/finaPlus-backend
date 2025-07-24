@@ -1,6 +1,9 @@
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from .models import Transaction, Payable, BankAccount
+from django.utils import timezone
+from django.db.models import Sum
+from decimal import Decimal
 
 @receiver(post_save, sender=Transaction)
 def update_balance_on_save(sender, instance, created, **kwargs):
@@ -49,33 +52,66 @@ def update_balance_on_save(sender, instance, created, **kwargs):
         current_account.save()
 
         
-# --- SINAL PARA EXCLUSÃO DE TRANSAÇÕES ---
 @receiver(post_delete, sender=Transaction)
 def update_balance_on_delete(sender, instance, **kwargs):
     """
-    Reverte o saldo da conta bancária quando uma transação é excluída.
+    Atualiza o saldo da conta bancária quando uma transação é deletada.
     """
-    if instance.bank_account:
-        if instance.type == 'entrada':
-            instance.bank_account.initial_balance -= instance.amount
-        elif instance.type == 'saida':
-            instance.bank_account.initial_balance += instance.amount
-        instance.bank_account.save()
+    # --- INÍCIO DA CORREÇÃO ---
+    try:
+        # Tenta acessar a conta bancária. Se ela não existir (porque está sendo deletada),
+        # o bloco 'except' será acionado.
+        bank_account_to_update = instance.bank_account
+        
+        if bank_account_to_update:
+            # Se a conta existir, recalcula o saldo normalmente
+            total_incomes = Transaction.objects.filter(
+                bank_account=bank_account_to_update, type='entrada'
+            ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
 
-# --- SEU SINAL EXISTENTE (EXEMPLO) ---
-# Se o seu sinal para criar transação a partir de Payable estiver aqui, mantenha-o.
-@receiver(post_save, sender=Payable)
-def create_transaction_from_payable(sender, instance, created, **kwargs):
-    """
-    Cria uma transação de saída quando uma nova conta a pagar é criada.
-    """
-    if created:
-        Transaction.objects.create(
-            user=instance.user,
-            company=instance.user.company,
-            description=f"{instance.description} (Compra Original)",
-            amount=instance.amount,
-            transaction_date=instance.due_date,
-            credit_card=instance.transaction.credit_card, 
-            type='saida'
-        )
+            total_expenses = Transaction.objects.filter(
+                bank_account=bank_account_to_update, type='saida'
+            ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+            bank_account_to_update.current_balance = total_incomes - total_expenses
+            bank_account_to_update.save()
+
+    except BankAccount.DoesNotExist:
+        # Se a conta bancária não existe mais, simplesmente não fazemos nada.
+        # Isso acontece quando a própria conta está sendo deletada.
+        pass
+
+
+
+
+# @receiver(post_save, sender=Payable)
+# def create_transaction_from_payable(sender, instance, created, **kwargs):
+#     """
+#     Cria uma transação de 'saida' quando uma conta a pagar (Payable) 
+#     é marcada como 'pago'.
+#     """
+#     # A lógica só roda se o status for 'pago' e ainda não houver uma transação associada.
+#     if instance.status == 'pago' and not instance.transaction:
+        
+#         # Lógica para encontrar o cartão de crédito (se houver)
+#         # Usamos hasattr para verificar com segurança se a relação 'card_expense' existe.
+#         credit_card_instance = None
+#         if hasattr(instance, 'card_expense') and instance.card_expense:
+#             credit_card_instance = instance.card_expense.credit_card
+
+#         # Cria a transação de saída
+#         transaction = Transaction.objects.create(
+#             company=instance.company,
+#             description=f"Pagamento de conta: {instance.description}",
+#             amount=instance.amount,
+#             transaction_date=instance.payment_date or timezone.now().date(),
+#             type='saida',
+#             category=instance.category,
+#             bank_account=instance.bank_account,
+#             credit_card=credit_card_instance,  # Associa o cartão de crédito encontrado
+#             is_paid=True
+#         )
+        
+#         # Associa a transação criada de volta à conta a pagar
+#         instance.transaction = transaction
+#         instance.save(update_fields=['transaction'])

@@ -4,6 +4,7 @@ from django.db.models.signals import post_init
 from django.dispatch import receiver
 from django.core.validators import MinValueValidator, MaxValueValidator
 from accounts.models import User, Company
+from cadastros.models import Customer
 
 class Category(models.Model):
     # Opções para os tipos e classificações
@@ -123,6 +124,7 @@ class Transaction(models.Model):
     class Meta:
         verbose_name = "Transação"
         verbose_name_plural = "Transações"
+        
 
     def __str__(self):
         return f"{self.description} - {self.amount}"
@@ -169,5 +171,41 @@ class Payable(models.Model):
 
     def __str__(self):
         return f"{self.description} - Venc: {self.due_date}"
+    
+
+class Receivable(models.Model):
+    
+    class StatusChoices(models.TextChoices):
+        PENDING = 'pending', 'Pendente'
+        RECEIVED = 'received', 'Recebido'
+        OVERDUE = 'overdue', 'Vencido'
+
+    class PaymentMethodChoices(models.TextChoices):
+        CASH = 'cash', 'Dinheiro'
+        CARD = 'card', 'Cartão'
+        TRANSFER = 'transfer', 'Transferência'
+        PIX = 'pix', 'PIX'
+        BOLETO = 'boleto', 'Boleto'
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='receivables', verbose_name="Empresa")
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='receivables', verbose_name="Usuário")
+    customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name='receivables', verbose_name="Cliente")
+    description = models.CharField(max_length=255, verbose_name="Descrição")
+    amount = models.DecimalField(max_digits=15, decimal_places=2, verbose_name="Valor a Receber")
+    due_date = models.DateField(verbose_name="Data de Vencimento")
+    payment_date = models.DateField(null=True, blank=True, verbose_name="Data de Recebimento")
+    status = models.CharField(max_length=10, choices=StatusChoices.choices, default=StatusChoices.PENDING, verbose_name="Status")
+    payment_method = models.CharField(max_length=15, choices=PaymentMethodChoices.choices, verbose_name="Forma de Pagamento")
+    notes = models.TextField(blank=True, null=True, verbose_name="Observações")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Conta a Receber"
+        verbose_name_plural = "Contas a Receber"
+        ordering = ['due_date']
+
+    def __str__(self):
+        return f"{self.description} - {self.customer.name} - Venc: {self.due_date}"
+
     
 

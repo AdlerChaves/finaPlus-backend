@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import Category, BankAccount, Transaction, CreditCard, Payable
+from .models import Category, BankAccount, Transaction, CreditCard, Payable, Receivable
+from cadastros.serializers import CustomerSerializer 
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -113,3 +114,35 @@ class PayableSerializer(serializers.ModelSerializer):
         ]
 
         read_only_fields = ['user']
+
+class ReceivableSerializer(serializers.ModelSerializer):
+    # Para incluir o nome do cliente na resposta da API
+    customer_name = serializers.CharField(source='customer.name', read_only=True)
+    # Para incluir os dados completos do cliente, se necessário no futuro
+    customer = CustomerSerializer(read_only=True)
+    # Campo para receber o ID do cliente ao criar/atualizar
+    customer_id = serializers.IntegerField(write_only=True)
+
+
+    class Meta:
+        model = Receivable
+        fields = [
+            'id',
+            'customer',
+            'customer_id',
+            'customer_name',
+            'description',
+            'amount',
+            'due_date',
+            'payment_date',
+            'status',
+            'payment_method',
+            'notes',
+            'created_at',
+        ]
+        read_only_fields = ['user', 'company']
+
+    def create(self, validated_data):
+        # Associa o customer_id recebido ao campo 'customer' do modelo
+        validated_data['customer_id'] = validated_data.pop('customer_id')
+        return super().create(validated_data)
