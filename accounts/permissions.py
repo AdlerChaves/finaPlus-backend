@@ -20,15 +20,15 @@ class HasPermission(permissions.BasePermission):
 class CanViewCadastros(HasPermission):
     def has_permission(self, request, view):
         # Define a permissão necessária antes de chamar a lógica principal
-        view.permission_required = 'accounts.view_customer' 
+        view.permission_required = 'cadastros.view_customer' 
         return super().has_permission(request, view)
 
 class CanEditCadastros(HasPermission):
     def has_permission(self, request, view):
         if request.method in permissions.SAFE_METHODS:
-            view.permission_required = 'accounts.view_customer'
+            view.permission_required = 'cadastros.view_customer'
         else:
-            view.permission_required = 'accounts.change_customer'
+            view.permission_required = 'cadastros.change_customer'
         return super().has_permission(request, view)
 
 class CanViewFinance(HasPermission):

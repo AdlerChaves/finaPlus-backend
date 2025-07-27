@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from .models import User
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAdminUser
-from .serializers import UserSerializer, CompanyUserSerializer, CurrentUserSerializer, GroupSerializer
+from .serializers import UserSerializer, CompanyUserSerializer, CurrentUserSerializer, GroupSerializer, ChangePasswordSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 
@@ -52,9 +52,6 @@ class LogoutView(generics.GenericAPIView):
         response.delete_cookie('refresh_token')
         return response
 
-# --------------------------------------------------------------------------
-# SEU CÓDIGO EXISTENTE - Nenhuma alteração necessária aqui
-# --------------------------------------------------------------------------
 class UserCreateView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
@@ -72,15 +69,21 @@ class CompanyUserViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
 
-class CurrentUserView(generics.RetrieveAPIView):
-    """
-    Retorna os dados do usuário autenticado.
-    """
+class CurrentUserView(generics.RetrieveUpdateAPIView):
+    
     serializer_class = CurrentUserSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
         return self.request.user
+
+    def get_serializer_class(self):
+        # Usar o serializer completo para GET e um mais limitado para PATCH
+        if self.request.method == 'PATCH':
+            # Em uma implementação futura, você pode criar um serializer específico para update
+            # Por enquanto, o CurrentUserSerializer serve, pois o email não será enviado pelo frontend
+            return CurrentUserSerializer
+        return CurrentUserSerializer
     
 
 class GroupViewSet(viewsets.ReadOnlyModelViewSet):
@@ -125,3 +128,45 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
         # Retorna os dados atualizados do usuário
         serializer = self.get_serializer(user)
         return Response(serializer.data)
+    
+
+class ChangePasswordView(generics.UpdateAPIView):
+    """
+    Endpoint para alterar a senha do usuário logado.
+    """
+    serializer_class = ChangePasswordSerializer
+    model = User
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self, queryset=None):
+        return self.request.user
+
+    def update(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        serializer = self.get_serializer(data=request.data)
+
+        if serializer.is_valid():
+            # Define a nova senha
+            self.object.set_password(serializer.data.get("new_password"))
+            self.object.save()
+            return Response({"detail": "Senha alterada com sucesso."}, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class DeleteAccountView(generics.DestroyAPIView):
+    """
+    Endpoint para o usuário logado excluir a própria conta.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_object(self):
+        return self.request.user
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        # Apaga os cookies de autenticação após deletar a conta
+        response = Response({"detail": "Conta excluída com sucesso."}, status=status.HTTP_204_NO_CONTENT)
+        response.delete_cookie('access_token')
+        response.delete_cookie('refresh_token')
+        return response

@@ -25,4 +25,15 @@ class User(AbstractUser):
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.ADMIN, verbose_name="Cargo")
     permissions_list = models.JSONField(default=list, blank=True, null=True, verbose_name="Lista de Permissões")
 
+    # Preferências do Sistema
+    theme = models.CharField(max_length=10, default='light', verbose_name="Tema") 
+    currency = models.CharField(max_length=5, default='BRL', verbose_name="Moeda Padrão")
+    language = models.CharField(max_length=10, default='pt-BR', verbose_name="Idioma")
+
+    # Preferências de Notificação
+    notify_weekly_goals = models.BooleanField(default=True, verbose_name="Notificar metas semanais")
+    notify_large_transactions = models.BooleanField(default=True, verbose_name="Notificar grandes transações")
+    notify_bills_reminder = models.BooleanField(default=True, verbose_name="Lembrete de contas a pagar")
+   
+
 

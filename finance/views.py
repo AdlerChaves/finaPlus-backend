@@ -906,6 +906,139 @@ class CashFlowChartView(APIView):
             'cumulative_balance': cumulative_balance_data,
         }
         return Response(response, status=status.HTTP_200_OK)
+    
+
+class DFCView(APIView):
+    """
+    Fornece dados para a Demonstração do Fluxo de Caixa (DFC).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        company = request.user.company
+        year = request.query_params.get('year', timezone.now().year)
+        
+        try:
+            year = int(year)
+        except (ValueError, TypeError):
+            return Response({'error': 'Ano inválido.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 1. Definir datas de início e fim
+        start_date = timezone.datetime(year, 1, 1).date()
+        end_date = timezone.datetime(year, 12, 31).date()
+
+        # 2. Calcular Saldos
+        saldo_inicial = self._get_saldo_ate_data(company, start_date - timedelta(days=1))
+        saldo_final = self._get_saldo_ate_data(company, end_date)
+
+        # 3. Calcular Fluxos de Caixa por Atividade
+        fluxo_operacional = self._get_fluxo_por_classificacao(company, start_date, end_date, 'operacional')
+        fluxo_investimento = self._get_fluxo_por_classificacao(company, start_date, end_date, 'investimento')
+        fluxo_financiamento = self._get_fluxo_por_classificacao(company, start_date, end_date, 'financiamento')
+
+        # 4. Variação de Caixa
+        variacao_caixa = saldo_final - saldo_inicial
+
+        # 5. Dados para Gráfico de Evolução (mensal)
+        saldo_evolucao = self._get_evolucao_saldo_mensal(company, year, saldo_inicial)
+
+        # 6. Montar a resposta
+        response_data = {
+            'summary': {
+                'saldo_inicial': saldo_inicial,
+                'saldo_final': saldo_final,
+                'variacao_caixa': variacao_caixa,
+                'fluxo_operacional': fluxo_operacional['total'],
+                'fluxo_investimento': fluxo_investimento['total'],
+                'fluxo_financiamento': fluxo_financiamento['total'],
+            },
+            'statement': {
+                'operacional': fluxo_operacional,
+                'investimento': fluxo_investimento,
+                'financiamento': fluxo_financiamento,
+            },
+            'charts': {
+                'composicao_fluxo': {
+                    'labels': ['Operacional', 'Investimento', 'Financiamento'],
+                    'data': [
+                        fluxo_operacional['total'],
+                        fluxo_investimento['total'],
+                        fluxo_financiamento['total']
+                    ]
+                },
+                'evolucao_saldo': saldo_evolucao
+            }
+        }
+        return Response(response_data, status=status.HTTP_200_OK)
+
+    def _get_saldo_ate_data(self, company, date):
+        """Calcula o saldo total da empresa até uma data específica."""
+        saldo = BankAccount.objects.filter(company=company).aggregate(
+            total=Sum('initial_balance')
+        )['total'] or Decimal('0.00')
+
+        transacoes_passadas = Transaction.objects.filter(
+            company=company,
+            transaction_date__lte=date,
+            bank_account__isnull=False
+        )
+        
+        saldo_transacoes = transacoes_passadas.aggregate(
+            entradas=Sum('amount', filter=Q(type='entrada')),
+            saidas=Sum('amount', filter=Q(type='saida'))
+        )
+        
+        entradas = saldo_transacoes.get('entradas') or Decimal('0.00')
+        saidas = saldo_transacoes.get('saidas') or Decimal('0.00')
+        
+        return saldo + entradas - saidas
+
+    def _get_fluxo_por_classificacao(self, company, start_date, end_date, classificacao):
+        """Calcula o fluxo de caixa para uma classificação DFC específica."""
+        transacoes = Transaction.objects.filter(
+            company=company,
+            transaction_date__range=[start_date, end_date],
+            category__dfc_classification=classificacao
+        )
+
+        entradas = transacoes.filter(type='entrada').aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        saidas = transacoes.filter(type='saida').aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+        return {
+            'entradas': entradas,
+            'saidas': saidas,
+            'total': entradas - saidas
+        }
+
+    def _get_evolucao_saldo_mensal(self, company, year, saldo_inicial):
+        """Retorna dados para o gráfico de evolução do saldo de caixa mensal."""
+        labels = []
+        data = []
+        saldo_acumulado = saldo_inicial
+        
+        for month in range(1, 13):
+            labels.append(timezone.datetime(year, month, 1).strftime('%b'))
+            
+            start_of_month = timezone.datetime(year, month, 1)
+            end_of_month = start_of_month + relativedelta(months=1) - timedelta(days=1)
+
+            transacoes_mes = Transaction.objects.filter(
+                company=company,
+                transaction_date__range=[start_of_month, end_of_month],
+                bank_account__isnull=False
+            )
+            
+            resultado_mes = transacoes_mes.aggregate(
+                entradas=Sum('amount', filter=Q(type='entrada')),
+                saidas=Sum('amount', filter=Q(type='saida'))
+            )
+            
+            entradas = resultado_mes.get('entradas') or Decimal('0.00')
+            saidas = resultado_mes.get('saidas') or Decimal('0.00')
+            
+            saldo_acumulado += (entradas - saidas)
+            data.append(saldo_acumulado)
+            
+        return {'labels': labels, 'data': data}
 
 
-PayableViewSet

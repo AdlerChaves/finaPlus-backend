@@ -133,6 +133,26 @@ class CurrentUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'first_name', 'last_name', 'email', 'role', 'permissions_list'
+            'id', 'first_name', 'last_name', 'email', 'role', 'permissions_list', 'theme', 'currency', 'language',
+            'notify_weekly_goals', 'notify_large_transactions', 'notify_bills_reminder'
+       
         ]
+
+class ChangePasswordSerializer(serializers.Serializer):
+    """
+    Serializer para a troca de senha do usuário.
+    """
+    current_password = serializers.CharField(style={"input_type": "password"}, required=True)
+    new_password = serializers.CharField(style={"input_type": "password"}, required=True)
+
+    def validate_current_password(self, value):
+        if not self.context['request'].user.check_password(value):
+            raise serializers.ValidationError("A senha atual está incorreta.")
+        return value
+
+    def validate_new_password(self, value):
+        if len(value) < 8:
+            raise serializers.ValidationError("A nova senha deve ter pelo menos 8 caracteres.")
+        # Você pode adicionar mais validações aqui (ex: complexidade)
+        return value
 

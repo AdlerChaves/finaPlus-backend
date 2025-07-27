@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import CategoryViewSet, BankAccountViewSet, TransactionViewSet, CreditCardViewSet, PayableViewSet, ReceivableViewSet, ReceivablesSummaryView
+from .views import CategoryViewSet, BankAccountViewSet, TransactionViewSet, CreditCardViewSet, PayableViewSet, ReceivableViewSet, ReceivablesSummaryView, DFCView
 from .views import CreateCardExpenseView, MarkAsPaidView, CardStatementView, CardBillView, MonthlyBillsView, CardBillDetailView, PayCardBillView, DashboardView, IncomeExpenseChartView, CashFlowChartView
 
 
@@ -29,6 +29,7 @@ urlpatterns = [
     path('dashboard/', DashboardView.as_view(), name='dashboard-summary'), 
     path('charts/income-expense/', IncomeExpenseChartView.as_view(), name='chart-income-expense'),
     path('charts/cash-flow/', CashFlowChartView.as_view(), name='chart-cash-flow'),
+    path('charts/dfc/', DFCView.as_view(), name='chart-dfc'),
    
     
 ]
