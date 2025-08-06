@@ -1,6 +1,14 @@
 from django.contrib.auth.models import Group, User
 from rest_framework import serializers
 from .models import User, Company
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
+class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        token['username'] = user.username
+        return token
 
 class CompanySerializer(serializers.ModelSerializer):
     class Meta:
@@ -15,7 +23,8 @@ class GroupSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     company = CompanySerializer()
-    username = serializers.CharField(read_only=True)
+    # Mude o username para não ser mais read_only
+    username = serializers.CharField(required=True)
     groups = GroupSerializer(many=True, read_only=True)
     
     groups_to_add = serializers.PrimaryKeyRelatedField(
@@ -28,34 +37,27 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'password', 'company', 'groups', 'groups_to_add'] ### ADICIONADO 'groups_to_add'
+        fields = ['id', 'username', 'email', 'password', 'company', 'groups', 'groups_to_add']
         extra_kwargs = {
             'password': {'write_only': True, 'style': {'input_type': 'password'}},
-            'email': {
-                'required': True,
-                'error_messages': {
-                    'unique': "Este endereço de e-mail já está em uso.",
-                    'invalid': "Por favor, insira um endereço de e-mail válido."
-                }
-            }
         }
 
     def create(self, validated_data):
         company_data = validated_data.pop('company')
-    
         groups_data = validated_data.pop('groups', [])
-
         cnpj = company_data.get('cnpj')
+        
         if cnpj and Company.objects.filter(cnpj=cnpj).exists():
             raise serializers.ValidationError({
                 "company": {"cnpj": ["Uma empresa com este CNPJ já foi cadastrada."]}
             })
 
         company = Company.objects.create(**company_data)
-
+        
+        # Use o create_user que lida corretamente com username, email e senha
         user = User.objects.create_user(
-            username=validated_data['email'],
-            email=validated_data['email'],
+            username=validated_data['username'],
+            email=validated_data.get('email', ''), # email é opcional
             password=validated_data['password'],
             company=company
         )
@@ -64,6 +66,7 @@ class UserSerializer(serializers.ModelSerializer):
             user.groups.set(groups_data)
             
         return user
+
     
 
 class CompanyUserSerializer(serializers.ModelSerializer):

@@ -22,10 +22,14 @@ class CustomerSerializer(serializers.ModelSerializer):
             'birth_date',
             'status',
             'notes',
-            'address', # Campo aninhado
+            'address', 
             'created_at',
-            'updated_at'
+            'updated_at',
+            'user',
+            'company',
         ]
+
+        read_only_fields = ('user', 'company',)
     
     def create(self, validated_data):
         address_data = validated_data.pop('address', None)

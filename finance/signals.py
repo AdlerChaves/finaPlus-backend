@@ -57,28 +57,24 @@ def update_balance_on_delete(sender, instance, **kwargs):
     """
     Atualiza o saldo da conta bancária quando uma transação é deletada.
     """
-    # --- INÍCIO DA CORREÇÃO ---
+    # Se a transação não tinha uma conta bancária, não faz nada.
+    if not instance.bank_account:
+        return
+
     try:
-        # Tenta acessar a conta bancária. Se ela não existir (porque está sendo deletada),
-        # o bloco 'except' será acionado.
-        bank_account_to_update = instance.bank_account
+        # Pega a conta para garantir que ela ainda existe
+        account = BankAccount.objects.get(pk=instance.bank_account.id)
         
-        if bank_account_to_update:
-            # Se a conta existir, recalcula o saldo normalmente
-            total_incomes = Transaction.objects.filter(
-                bank_account=bank_account_to_update, type='entrada'
-            ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-
-            total_expenses = Transaction.objects.filter(
-                bank_account=bank_account_to_update, type='saida'
-            ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-
-            bank_account_to_update.current_balance = total_incomes - total_expenses
-            bank_account_to_update.save()
+        # Faz a operação inversa da transação deletada
+        if instance.type == 'entrada':
+            account.initial_balance -= instance.amount
+        elif instance.type == 'saida':
+            account.initial_balance += instance.amount
+            
+        account.save()
 
     except BankAccount.DoesNotExist:
-        # Se a conta bancária não existe mais, simplesmente não fazemos nada.
-        # Isso acontece quando a própria conta está sendo deletada.
+        # Se a conta não existe mais, não há o que fazer.
         pass
 
 

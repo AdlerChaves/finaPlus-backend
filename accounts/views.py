@@ -4,14 +4,14 @@ from rest_framework.response import Response
 from .models import User
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAdminUser
-from .serializers import UserSerializer, CompanyUserSerializer, CurrentUserSerializer, GroupSerializer, ChangePasswordSerializer
+from .serializers import UserSerializer, CompanyUserSerializer, CurrentUserSerializer, GroupSerializer, ChangePasswordSerializer, MyTokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 
-# --------------------------------------------------------------------------
-# CÓDIGO NOVO - Adicione esta classe para o Login com Cookies
-# --------------------------------------------------------------------------
+
 class MyTokenObtainPairView(TokenObtainPairView):
+    serializer_class = MyTokenObtainPairSerializer
+
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
 
@@ -55,6 +55,7 @@ class LogoutView(generics.GenericAPIView):
 class UserCreateView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
+    permission_classes = [permissions.AllowAny]
 
 class CompanyUserViewSet(viewsets.ModelViewSet):
     """

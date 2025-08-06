@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+from datetime import date
 from django.db.models.signals import post_init 
 from django.dispatch import receiver
 from django.core.validators import MinValueValidator, MaxValueValidator
@@ -113,7 +114,7 @@ class Transaction(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE) 
     description = models.CharField(max_length=255)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
-    transaction_date = models.DateField(default=timezone.now)
+    transaction_date = models.DateField(default=date.today)
     type = models.CharField(max_length=7, choices=TRANSACTION_TYPE_CHOICES, default='saida') 
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True) 
     notes = models.TextField(blank=True, null=True) 
