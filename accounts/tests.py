@@ -40,10 +40,11 @@ class TestUserCreateView:
         """
         url = reverse('register')
         data = {
-            # Adicione o campo username
-            "username": "newtestuser",
+            # O campo username não é mais necessário, pois ele será o email
             "email": "newuser@example.com",
             "password": "strongpassword123",
+            "first_name": "Test", # Adicionar campos que agora são esperados
+            "last_name": "User",
             "company": {
                 "name": "New Test Company",
                 "cnpj": "98765432000195"
@@ -51,7 +52,7 @@ class TestUserCreateView:
         }
         response = api_client.post(url, data, format='json')
         assert response.status_code == status.HTTP_201_CREATED
-        assert User.objects.filter(username=data['username']).exists()
+        assert User.objects.filter(username=data['email']).exists()
         assert Company.objects.filter(cnpj=data['company']['cnpj']).exists()
 
 class TestMyTokenObtainPairView:

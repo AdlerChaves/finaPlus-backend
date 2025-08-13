@@ -24,6 +24,7 @@ class User(AbstractUser):
     # NOVOS CAMPOS ADICIONADOS
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.ADMIN, verbose_name="Cargo")
     permissions_list = models.JSONField(default=list, blank=True, null=True, verbose_name="Lista de Permissões")
+    phone = models.CharField(max_length=20, blank=True, null=True, verbose_name="Telefone/Celular")
 
     # Preferências do Sistema
     theme = models.CharField(max_length=10, default='light', verbose_name="Tema") 

@@ -215,6 +215,40 @@ class MarkAsPaidView(APIView):
 class CreateCardExpenseView(APIView):
     permission_classes = [IsAuthenticated]
 
+    def _calculate_first_due_date(self, transaction_date, credit_card):
+        """
+        Calcula a data de vencimento da primeira parcela com base no dia de fecho e vencimento do cartão,
+        tratando corretamente os casos em que o vencimento ocorre no mês seguinte.
+        """
+        closing_day = credit_card.closing_day
+        due_day = credit_card.due_day
+
+        # Determina a data de fecho para o mês da transação
+        closing_date_of_transaction_month = transaction_date.replace(day=closing_day)
+
+        if transaction_date > closing_date_of_transaction_month:
+            # A compra foi feita APÓS o fecho do mês corrente.
+            # Portanto, a fatura relevante fecha no PRÓXIMO mês.
+            # Ex: Compra em 29/08, fecho dia 25 -> Fatura fecha em 25/09.
+            invoice_closing_month = transaction_date + relativedelta(months=1)
+        else:
+            # A compra foi feita ANTES ou NO DIA do fecho do mês corrente.
+            # Portanto, a fatura relevante fecha neste mês.
+            # Ex: Compra em 20/08, fecho dia 25 -> Fatura fecha em 25/08.
+            invoice_closing_month = transaction_date
+
+        if due_day < closing_day:
+            # O vencimento é no mês seguinte ao fecho.
+            # Ex: Fecha dia 30, vence dia 10 do mês seguinte.
+            due_date_month = invoice_closing_month + relativedelta(months=1)
+        else:
+            # O vencimento é no mesmo mês do fecho.
+            # Ex: Fecha dia 20, vence dia 28 do mesmo mês.
+            due_date_month = invoice_closing_month
+
+        # Define a data de vencimento final com o dia correto
+        return due_date_month.replace(day=due_day)
+
     def post(self, request, *args, **kwargs):
         company = request.user.company
         description = request.data.get('description')
@@ -240,7 +274,6 @@ class CreateCardExpenseView(APIView):
 
         with transaction.atomic():
             # Cria a transação principal (a compra original)
-            # --- BLOCO CORRIGIDO ---
             main_transaction = Transaction.objects.create(
                 user=request.user, 
                 company=company,
@@ -249,18 +282,23 @@ class CreateCardExpenseView(APIView):
                 transaction_date=transaction_date,
                 type='saida', 
                 credit_card=credit_card
-                # Os campos 'user' e 'category' foram removidos pois não pertencem ao modelo Transaction
             )
 
-            # Cria as parcelas (Payable)
+            # --- LÓGICA DE PARCELAMENTO CORRIGIDA ---
+            
+            # 1. Calcula a data de vencimento da PRIMEIRA parcela corretamente
+            first_due_date = self._calculate_first_due_date(transaction_date, credit_card)
+            
+            # 2. Cria as parcelas (Payable)
             installment_amount = amount / installments
-            for i in range(1, installments + 1):
-                due_date = transaction_date + relativedelta(months=i)
+            for i in range(installments):
+                # A primeira parcela usa a data calculada, as seguintes adicionam um mês a ela.
+                due_date = first_due_date + relativedelta(months=i)
                 Payable.objects.create(
                     user=request.user,
                     company=company,
                     transaction=main_transaction,
-                    description=f"{description} ({i}/{installments})",
+                    description=f"{description} ({i + 1}/{installments})",
                     amount=installment_amount,
                     due_date=due_date,
                     status='pendente',
@@ -628,6 +666,15 @@ class ReceivableViewSet(viewsets.ModelViewSet):
             )
 
         return queryset.order_by('due_date')
+    
+    def perform_create(self, serializer):
+        """
+        Associa automaticamente a empresa e o usuário ao criar uma nova conta a receber.
+        """
+        serializer.save(
+            company=self.request.user.company,
+            user=self.request.user
+        )
     
 
 class ReceivablesSummaryView(APIView):
@@ -1040,5 +1087,55 @@ class DFCView(APIView):
             data.append(saldo_acumulado)
             
         return {'labels': labels, 'data': data}
+    
+
+class MarkAsReceivedView(APIView):
+    """
+    View específica para marcar uma conta a receber como recebida.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk, format=None):
+        company = request.user.company
+        try:
+            receivable = Receivable.objects.get(pk=pk, company=company)
+        except Receivable.DoesNotExist:
+            return Response({'error': 'Conta a receber não encontrada.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if receivable.status == 'received':
+            return Response({'error': 'Esta conta já foi marcada como recebida.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Dados que o frontend deve enviar no corpo da requisição
+        bank_account_id = request.data.get('bank_account_id')
+        payment_date_str = request.data.get('payment_date', timezone.now().strftime('%Y-%m-%d'))
+
+        if not bank_account_id:
+            return Response({'error': 'É obrigatório informar a conta bancária onde o valor foi recebido.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            bank_account = BankAccount.objects.get(id=bank_account_id, company=company)
+            payment_date = timezone.datetime.strptime(payment_date_str, '%Y-%m-%d').date()
+        except (BankAccount.DoesNotExist, ValueError):
+            return Response({'error': 'Dados inválidos fornecidos.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            # 1. Atualiza a conta a receber
+            receivable.status = 'received'
+            receivable.payment_date = payment_date
+            receivable.save()
+
+            # 2. Cria a transação de entrada correspondente no caixa
+            Transaction.objects.create(
+                company=company,
+                user=request.user,
+                description=f"Recebimento: {receivable.description}",
+                amount=receivable.amount,
+                transaction_date=payment_date,
+                type='entrada', # A transação é uma entrada de dinheiro
+                bank_account=bank_account,
+                category=receivable.customer.category if hasattr(receivable.customer, 'category') else None
+            )
+
+        return Response({'success': 'Conta marcada como recebida com sucesso.'}, status=status.HTTP_200_OK)
 
 

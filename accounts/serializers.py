@@ -24,20 +24,16 @@ class GroupSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     company = CompanySerializer()
     # Mude o username para não ser mais read_only
-    username = serializers.CharField(required=True)
+    # REMOVIDO: username = serializers.CharField(required=True)
     groups = GroupSerializer(many=True, read_only=True)
     
-    groups_to_add = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=Group.objects.all(),
-        write_only=True,
-        required=False,
-        source='groups' 
-    )
+    # ... (código existente) ...
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'password', 'company', 'groups', 'groups_to_add']
+        # --- ALTERAÇÃO AQUI ---
+        # Adicionamos first_name, last_name e phone. Removemos username (será igual ao email).
+        fields = ['id', 'email', 'password', 'company', 'first_name', 'last_name', 'phone', 'groups']
         extra_kwargs = {
             'password': {'write_only': True, 'style': {'input_type': 'password'}},
         }
@@ -54,18 +50,22 @@ class UserSerializer(serializers.ModelSerializer):
 
         company = Company.objects.create(**company_data)
         
-        # Use o create_user que lida corretamente com username, email e senha
+        # --- ALTERAÇÃO AQUI ---
+        # Usamos o email como username e passamos os novos campos
         user = User.objects.create_user(
-            username=validated_data['username'],
-            email=validated_data.get('email', ''), # email é opcional
+            username=validated_data['email'], # Usar email como username
+            email=validated_data['email'],
             password=validated_data['password'],
+            first_name=validated_data.get('first_name', ''),
+            last_name=validated_data.get('last_name', ''),
+            phone=validated_data.get('phone', ''),
             company=company
         )
         
         if groups_data:
             user.groups.set(groups_data)
             
-        return user
+        return user 
 
     
 
@@ -136,10 +136,23 @@ class CurrentUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'first_name', 'last_name', 'email', 'role', 'permissions_list', 'theme', 'currency', 'language',
-            'notify_weekly_goals', 'notify_large_transactions', 'notify_bills_reminder'
-       
+            'id', 'first_name', 'last_name', 'email', 'phone', 'role', 'permissions_list', 
+            'theme', 'currency', 'language', 'notify_weekly_goals', 
+            'notify_large_transactions', 'notify_bills_reminder'
         ]
+
+    def update(self, instance, validated_data):
+        # Pega o número de telemóvel dos dados validados, se existir
+        phone_number = validated_data.get('phone')
+
+        # Se um número de telemóvel foi enviado e não está vazio...
+        if phone_number:
+            # Garante que o número comece com +55
+            if not phone_number.startswith('+55'):
+                validated_data['phone'] = f"+55{phone_number}"
+        
+        # Continua com o processo de atualização normal
+        return super().update(instance, validated_data)
 
 class ChangePasswordSerializer(serializers.Serializer):
     """

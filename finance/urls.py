@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import CategoryViewSet, BankAccountViewSet, TransactionViewSet, CreditCardViewSet, PayableViewSet, ReceivableViewSet, ReceivablesSummaryView, DFCView
-from .views import CreateCardExpenseView, MarkAsPaidView, CardStatementView, CardBillView, MonthlyBillsView, CardBillDetailView, PayCardBillView, DashboardView, IncomeExpenseChartView, CashFlowChartView
+from .views import CreateCardExpenseView, MarkAsPaidView, CardStatementView, CardBillView, MonthlyBillsView, CardBillDetailView, PayCardBillView, DashboardView, IncomeExpenseChartView, CashFlowChartView, MarkAsReceivedView
 
 
 
@@ -18,6 +18,7 @@ router.register(r'receivables', ReceivableViewSet, basename='receivable')
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('receivables/<int:pk>/mark-as-received/', MarkAsReceivedView.as_view(), name='receivable-mark-as-received'),
     path('payables/<int:pk>/mark_as_paid/', MarkAsPaidView.as_view(), name='payable-mark-as-paid'),
     path('card-statement/', CardStatementView.as_view(), name='card-statement'),
     path('card-expense/', CreateCardExpenseView.as_view(), name='create-card-expense'),
