@@ -17,7 +17,7 @@ SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', default=False, cast=bool)
 
 ALLOWED_HOSTS = [
-    'api.relda.com',
+    'api.relda.com.br',
     '107.21.69.214',
 ]
 
