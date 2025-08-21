@@ -19,12 +19,7 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS = [
     'api.relda.com.br',
     '107.21.69.214',
-    'http://www.relda.com.br.s3-website-us-east-1.amazonaws.com',
-    'https://www.relda.com.br.s3-website-us-east-1.amazonaws.com',
-    'http://www.relda.com.br'
-    'https://www.relda.com.br'
-
-]
+    ]
 
 
 # Application definition
@@ -139,6 +134,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173", 
     "http://127.0.0.1:5173", 
+    "http://www.relda.com.br",
+    "https://www.relda.com.br",
 ]   
 
 CORS_ALLOW_CREDENTIALS = True
