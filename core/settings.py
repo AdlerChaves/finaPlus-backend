@@ -19,6 +19,7 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS = [
     'api.relda.com.br',
     '107.21.69.214',
+    '172.31.31.239',
     ]
 
 
