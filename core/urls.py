@@ -1,11 +1,9 @@
 from django.contrib import admin
 from rest_framework import routers
 from django.urls import path, include
-from .views import home
-# from rest_framework_simplejwt.views import (
-#     TokenObtainPairView,
-#     TokenRefreshView,
-# )
+from .views import home, health_check
+
+
 from rest_framework_simplejwt.views import TokenRefreshView
 from accounts.views import UserViewSet, GroupViewSet
 
@@ -28,5 +26,6 @@ urlpatterns = [
     # A rota geral para o router vem por último.
     path('api/finance/', include('finance.urls')),
     path('api/cadastros/', include('cadastros.urls')),
+    path('health-check/', health_check, name='health_check'),
 
 ]
