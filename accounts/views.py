@@ -25,8 +25,7 @@ class MyTokenObtainPairView(TokenObtainPairView):
                 'access_token',
                 access_token,
                 httponly=True,
-                secure=True, 
-                samesite='None',
+                samesite='Lax',
                 domain='.relda.com.br',
                 path='/'
                 # secure=True, # Lembre-se de descomentar em produção (HTTPS)
@@ -35,8 +34,7 @@ class MyTokenObtainPairView(TokenObtainPairView):
                 'refresh_token',
                 refresh_token,
                 httponly=True,
-                secure=True, 
-                samesite='None',
+                samesite='Lax',
                 domain='.relda.com.br',
                 path='/'
                 # secure=True, # Lembre-se de descomentar em produção (HTTPS)
