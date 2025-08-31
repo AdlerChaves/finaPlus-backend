@@ -13,44 +13,33 @@ class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyTokenObtainPairSerializer
 
     def post(self, request, *args, **kwargs):
-        # 1. Obtenha a resposta original da biblioteca JWT
         response = super().post(request, *args, **kwargs)
 
-        # 2. Verifique se o login foi bem-sucedido
         if response.status_code == 200:
             access_token = response.data.pop('access')
             refresh_token = response.data.pop('refresh')
-
 
             response.set_cookie(
                 'access_token',
                 access_token,
                 httponly=True,
-                samesite='None',
-                domain='.relda.com.br',
+                samesite='Lax',
+                # domain='.relda.com.br',
                 path='/',
                 secure=True
             )
-
             response.set_cookie(
                 'refresh_token',
                 refresh_token,
                 httponly=True,
-                samesite='None',
-                domain='.relda.com.br',
+                samesite='Lax',
+                # domain='.relda.com.br',
                 path='/',
                 secure=True
             )
-
-            
-            response['X-Custom-Debug-Header'] = 'Codigo-Views-Atualizado'
-
-        
+    
         return response
 
-# --------------------------------------------------------------------------
-# CÓDIGO NOVO - Adicione esta classe para o Logout
-# --------------------------------------------------------------------------
 class LogoutView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
