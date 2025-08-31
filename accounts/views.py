@@ -39,6 +39,9 @@ class MyTokenObtainPairView(TokenObtainPairView):
                 path='/',
                 secure=True
             )
+
+            response['X-Custom-Debug-Header'] = 'Codigo-Views-Atualizado'
+            
             return cookie_response
         
         return response
