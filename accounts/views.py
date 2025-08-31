@@ -13,15 +13,16 @@ class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyTokenObtainPairSerializer
 
     def post(self, request, *args, **kwargs):
+        # 1. Obtenha a resposta original da biblioteca JWT
         response = super().post(request, *args, **kwargs)
 
+        # 2. Verifique se o login foi bem-sucedido
         if response.status_code == 200:
             access_token = response.data.pop('access')
             refresh_token = response.data.pop('refresh')
 
-            cookie_response = Response(response.data)
-            
-            cookie_response.set_cookie(
+
+            response.set_cookie(
                 'access_token',
                 access_token,
                 httponly=True,
@@ -30,7 +31,8 @@ class MyTokenObtainPairView(TokenObtainPairView):
                 path='/',
                 secure=True
             )
-            cookie_response.set_cookie(
+
+            response.set_cookie(
                 'refresh_token',
                 refresh_token,
                 httponly=True,
@@ -40,9 +42,9 @@ class MyTokenObtainPairView(TokenObtainPairView):
                 secure=True
             )
 
-            response['X-Custom-Debug-Header'] = 'Codigo-Views-Atualizado'
             
-            return cookie_response
+            response['X-Custom-Debug-Header'] = 'Codigo-Views-Atualizado'
+
         
         return response
 
