@@ -25,19 +25,19 @@ class MyTokenObtainPairView(TokenObtainPairView):
                 'access_token',
                 access_token,
                 httponly=True,
-                samesite='Lax',
+                samesite='None',
                 domain='.relda.com.br',
-                path='/'
-                # secure=True, # Lembre-se de descomentar em produção (HTTPS)
+                path='/',
+                secure=True
             )
             cookie_response.set_cookie(
                 'refresh_token',
                 refresh_token,
                 httponly=True,
-                samesite='Lax',
+                samesite='None',
                 domain='.relda.com.br',
-                path='/'
-                # secure=True, # Lembre-se de descomentar em produção (HTTPS)
+                path='/',
+                secure=True
             )
             return cookie_response
         
