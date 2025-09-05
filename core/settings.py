@@ -20,6 +20,8 @@ ALLOWED_HOSTS = [
     'www.relda.com.br',
     '107.21.69.214',
     '172.31.31.239',
+    'api.relda.com.br',
+    'api.relda.com',
     ]
 
 
@@ -122,7 +124,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = '/api/static/'
+STATIC_URL = '/static/'
 
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 

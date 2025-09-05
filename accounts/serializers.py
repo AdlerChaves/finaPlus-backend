@@ -23,16 +23,10 @@ class GroupSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     company = CompanySerializer()
-    # Mude o username para não ser mais read_only
-    # REMOVIDO: username = serializers.CharField(required=True)
     groups = GroupSerializer(many=True, read_only=True)
     
-    # ... (código existente) ...
-
     class Meta:
         model = User
-        # --- ALTERAÇÃO AQUI ---
-        # Adicionamos first_name, last_name e phone. Removemos username (será igual ao email).
         fields = ['id', 'email', 'password', 'company', 'first_name', 'last_name', 'phone', 'groups']
         extra_kwargs = {
             'password': {'write_only': True, 'style': {'input_type': 'password'}},
@@ -64,7 +58,14 @@ class UserSerializer(serializers.ModelSerializer):
         
         if groups_data:
             user.groups.set(groups_data)
-            
+
+        # --- LÓGICA ADICIONADA PARA ADICIONAR AO GRUPO 'Administrador' ---
+        try:
+            admin_group = Group.objects.get(name='Administrador')
+            user.groups.add(admin_group)
+        except Group.DoesNotExist:
+            pass
+        
         return user 
 
     
