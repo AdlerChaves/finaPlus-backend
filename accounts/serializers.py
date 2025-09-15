@@ -55,9 +55,6 @@ class UserSerializer(serializers.ModelSerializer):
             phone=validated_data.get('phone', ''),
             company=company
         )
-        
-        if groups_data:
-            user.groups.set(groups_data)
 
         # --- LÓGICA ADICIONADA PARA ADICIONAR AO GRUPO 'Administrador' ---
         try:

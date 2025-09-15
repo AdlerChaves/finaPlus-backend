@@ -36,9 +36,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        """
-        CORREÇÃO: Associa tanto o usuário quanto a empresa à nova categoria.
-        """
+       
         serializer.save(user=self.request.user, company=self.request.user.company)
 
 
