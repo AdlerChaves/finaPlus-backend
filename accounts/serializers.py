@@ -56,32 +56,12 @@ class UserSerializer(serializers.ModelSerializer):
             company=company
         )
 
-         # --- DIAGNÓSTICO ADICIONADO ---
-        print("--- Iniciando atribuição de grupo para o novo usuário ---")
+        # --- LÓGICA ADICIONADA PARA ADICIONAR AO GRUPO 'Administrador' ---
         try:
-            # Tenta buscar o grupo EXATAMENTE como escrito
             admin_group = Group.objects.get(name='Administrador')
-            print(f"Grupo '{admin_group.name}' encontrado com sucesso!")
             user.groups.add(admin_group)
-            print(f"Usuário '{user.email}' adicionado ao grupo '{admin_group.name}'.")
-            
-            # Verificação final
-            if user.groups.filter(name='Administrador').exists():
-                print("VERIFICAÇÃO: O usuário agora está no grupo Administrador.")
-            else:
-                print("ALERTA: A adição ao grupo falhou silenciosamente.")
-
         except Group.DoesNotExist:
-            # Esta mensagem aparecerá se o grupo não for encontrado
-            print("ERRO: O grupo 'Administrador' não foi encontrado no banco de dados.")
-            print("Verifique se o nome no Django Admin corresponde EXATAMENTE a 'Administrador'.")
-            
-            # Log de todos os grupos existentes para ajudar a depurar
-            all_groups = list(Group.objects.values_list('name', flat=True))
-            print(f"Grupos disponíveis no banco de dados: {all_groups}")
-        
-        print("--- Fim da atribuição de grupo ---")
-        # --- FIM DO DIAGNÓSTICO ---
+            pass
         
         return user 
 
