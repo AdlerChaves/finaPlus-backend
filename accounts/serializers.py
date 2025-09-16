@@ -56,12 +56,10 @@ class UserSerializer(serializers.ModelSerializer):
             company=company
         )
 
-        # --- LÓGICA ADICIONADA PARA ADICIONAR AO GRUPO 'Administrador' ---
-        try:
-            admin_group = Group.objects.get(name='Administrador')
-            user.groups.add(admin_group)
-        except Group.DoesNotExist:
-            pass
+        # Adiciona o usuário ao grupo 'Administrador' por padrão
+        # Se o grupo não existir, ele será criado
+        admin_group, _ = Group.objects.get_or_create(name='Administrador')
+        user.groups.add(admin_group)
         
         return user 
 
