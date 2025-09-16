@@ -2,6 +2,7 @@ from django.contrib.auth.models import Group, User
 from rest_framework import serializers
 from .models import User, Company
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.db import transaction  
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
@@ -33,33 +34,39 @@ class UserSerializer(serializers.ModelSerializer):
         }
 
     def create(self, validated_data):
-        company_data = validated_data.pop('company')
-        groups_data = validated_data.pop('groups', [])
-        cnpj = company_data.get('cnpj')
-        
-        if cnpj and Company.objects.filter(cnpj=cnpj).exists():
-            raise serializers.ValidationError({
-                "company": {"cnpj": ["Uma empresa com este CNPJ já foi cadastrada."]}
-            })
+        # Use transaction.atomic para garantir que todas as operações no banco de dados
+        # sejam executadas como um único bloco.
+        try:
+            with transaction.atomic():
+                company_data = validated_data.pop('company')
+                cnpj = company_data.get('cnpj')
+                
+                if cnpj and Company.objects.filter(cnpj=cnpj).exists():
+                    raise serializers.ValidationError({
+                        "company": {"cnpj": ["Uma empresa com este CNPJ já foi cadastrada."]}
+                    })
 
-        company = Company.objects.create(**company_data)
-        
-        # --- ALTERAÇÃO AQUI ---
-        # Usamos o email como username e passamos os novos campos
-        user = User.objects.create_user(
-            username=validated_data['email'], # Usar email como username
-            email=validated_data['email'],
-            password=validated_data['password'],
-            first_name=validated_data.get('first_name', ''),
-            last_name=validated_data.get('last_name', ''),
-            phone=validated_data.get('phone', ''),
-            company=company
-        )
+                company = Company.objects.create(**company_data)
+                
+                user = User.objects.create_user(
+                    username=validated_data['email'],
+                    email=validated_data['email'],
+                    password=validated_data['password'],
+                    first_name=validated_data.get('first_name', ''),
+                    last_name=validated_data.get('last_name', ''),
+                    phone=validated_data.get('phone', ''),
+                    company=company
+                )
 
-        # Adiciona o usuário ao grupo 'Administrador' por padrão
-        # Se o grupo não existir, ele será criado
-        admin_group, _ = Group.objects.get_or_create(name='Administrador')
-        user.groups.add(admin_group)
+                # Busca ou cria o grupo 'Administrador' de forma segura
+                admin_group, _ = Group.objects.get_or_create(name='Administrador')
+                
+                # Adiciona o usuário ao grupo
+                user.groups.add(admin_group)
+                
+        except Exception as e:
+            # Se qualquer parte da transação falhar, levanta um erro claro.
+            raise serializers.ValidationError(str(e))
         
         return user 
 
