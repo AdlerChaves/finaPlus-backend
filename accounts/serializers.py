@@ -53,7 +53,8 @@ class UserSerializer(serializers.ModelSerializer):
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', ''),
             phone=validated_data.get('phone', ''),
-            company=company
+            company=company,
+            permissions_list=["pagamentos", "movimentacoes", "relatorios", "cadastros", "contas", "configuracoes", "dashboard"],
         )
 
         # Adiciona o usuário ao grupo 'Administrador' por padrão

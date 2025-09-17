@@ -100,7 +100,7 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
     API endpoint para visualizar usuários e gerenciar seus grupos.
     """
     queryset = User.objects.all()
-    serializer_class = UserSerializer
+    serializer_class = 
     # Apenas administradores podem gerenciar usuários
     permission_classes = [IsAdminUser]
 
