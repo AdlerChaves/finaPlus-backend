@@ -15,6 +15,8 @@ from .serializers import CategorySerializer, BankAccountSerializer, TransactionS
 from dateutil.relativedelta import relativedelta
 from django.db.models.functions import TruncMonth
 from accounts.permissions import CanEditFinance, CanViewFinance
+import calendar
+
 
 class CategoryViewSet(viewsets.ModelViewSet):
     
@@ -212,6 +214,12 @@ class MarkAsPaidView(APIView):
 
 class CreateCardExpenseView(APIView):
     permission_classes = [IsAuthenticated]
+
+    def _safe_replace_day(self, date_obj, day):
+        """Substitui o dia da data, garantindo que não ultrapasse o último dia do mês."""
+        last_day = calendar.monthrange(date_obj.year, date_obj.month)[1]
+        safe_day = min(day, last_day)
+        return date_obj.replace(day=safe_day)
 
     def _calculate_first_due_date(self, transaction_date, credit_card):
         """

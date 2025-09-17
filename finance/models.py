@@ -209,34 +209,4 @@ class Receivable(models.Model):
         return f"{self.description} - {self.customer.name} - Venc: {self.due_date}"
 
     
-class CardExpense(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='card_expenses')
-    description = models.CharField(max_length=255)
-    amount = models.DecimalField(max_digits=10, decimal_places=2, help_text="Valor total da despesa")
-    installments = models.IntegerField(default=1, help_text="Número total de parcelas")
-    transaction_date = models.DateField()
-    credit_card = models.ForeignKey(CreditCard, on_delete=models.CASCADE, related_name='expenses')
-    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name='card_expenses')
 
-    def __str__(self):
-        return f'{self.description} - {self.installments}x'
-
-class Installment(models.Model):
-    STATUS_CHOICES = [
-        ('pendente', 'Pendente'),
-        ('pago', 'Pago'),
-    ]
-    
-    card_expense = models.ForeignKey(CardExpense, on_delete=models.CASCADE, related_name='installments')
-    installment_number = models.IntegerField()
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
-    due_date = models.DateField()
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pendente')
-
-    class Meta:
-        # Garante que cada número de parcela seja único para uma mesma despesa
-        unique_together = ('card_expense', 'installment_number')
-        ordering = ['due_date', 'installment_number']
-
-    def __str__(self):
-        return f'Parcela {self.installment_number}/{self.card_expense.installments} de {self.card_expense.description}'
