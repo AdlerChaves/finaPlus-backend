@@ -140,7 +140,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://www.relda.com.br",
     "https://www.relda.com.br",
     "localhost",  
-    "127.0.0.1",  
+    "127.0.0.1",
+    "https://api.relda.com.br",  
 ]   
 
 # CSRF_TRUSTED_ORIGINS = [

@@ -24,7 +24,7 @@ class MyTokenObtainPairView(TokenObtainPairView):
                 access_token,
                 httponly=True,
                 samesite='Lax',
-                # domain='.relda.com.br',
+                domain='.relda.com.br',
                 path='/',
                 secure=True
             )
@@ -33,7 +33,7 @@ class MyTokenObtainPairView(TokenObtainPairView):
                 refresh_token,
                 httponly=True,
                 samesite='Lax',
-                # domain='.relda.com.br',
+                domain='.relda.com.br',
                 path='/',
                 secure=True
             )
