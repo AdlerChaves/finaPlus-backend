@@ -23,7 +23,7 @@ class MyTokenObtainPairView(TokenObtainPairView):
                 'access_token',
                 access_token,
                 httponly=True,
-                samesite='Lax',
+                samesite='None',
                 # domain='.relda.com.br',
                 path='/',
                 secure=True
@@ -32,7 +32,7 @@ class MyTokenObtainPairView(TokenObtainPairView):
                 'refresh_token',
                 refresh_token,
                 httponly=True,
-                samesite='Lax',
+                samesite='None',
                 # domain='.relda.com.br',
                 path='/',
                 secure=True
