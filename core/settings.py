@@ -135,18 +135,18 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173", 
-    "http://127.0.0.1:5173", 
+    "https://localhost:5173", 
+    "https://127.0.0.1:5173", 
     "http://www.relda.com.br",
     "https://www.relda.com.br",
     "localhost",  
     "127.0.0.1",  
 ]   
 
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+# CSRF_TRUSTED_ORIGINS = [
+#     "https://localhost:5173",
+#     "https://127.0.0.1:5173",
+# ]
 
 CORS_ALLOW_CREDENTIALS = True
 
@@ -208,8 +208,3 @@ SIMPLE_JWT = {
     "SLIDING_TOKEN_OBTAIN_SERIALIZER": "rest_framework_simplejwt.serializers.TokenObtainSlidingSerializer",
     "SLIDING_TOKEN_REFRESH_SERIALIZER": "rest_framework_simplejwt.serializers.TokenObtainSlidingSerializer",
 }
-
-SESSION_COOKIE_SAMESITE = 'None'
-CSRF_COOKIE_SAMESITE = 'None'
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
