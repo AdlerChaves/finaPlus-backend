@@ -2,9 +2,15 @@ from django.contrib.auth.models import Group, User
 from rest_framework import serializers
 from .models import User, Company
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from django.db import transaction  
+from django.contrib.auth import get_user_model
+
+UserModel = get_user_model()
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """
+    Aceita tanto 'username' quanto 'email' enviados pelo frontend.
+    Ajusta o atributo esperado pelo TokenObtainPairSerializer antes de validar.
+    """
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
@@ -12,15 +18,18 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
 
     def validate(self, attrs):
-        # Verifica se a chave 'email' foi enviada na requisição
-        if 'email' in attrs:
-            # Renomeia a chave 'email' para 'username'
-            attrs['username'] = attrs.pop('email')
-        
-        # Chama o método de validação da classe pai com os dados ajustados
-        data = super().validate(attrs)
-        
-        return data
+        # 'username_field' vem do TokenObtainPairSerializer (geralmente User.USERNAME_FIELD)
+        username_field = self.username_field
+
+        # Se o frontend enviou 'email' e o username_field não for 'email', mapeia para o esperado.
+        if 'email' in attrs and username_field != 'email':
+            attrs[username_field] = attrs.get('email')
+
+        # Se o frontend enviou 'username' e username_field é 'email', mapeia também.
+        if 'username' in attrs and username_field == 'email':
+            attrs['email'] = attrs.get('username')
+
+        return super().validate(attrs)
 
 class CompanySerializer(serializers.ModelSerializer):
     class Meta:
