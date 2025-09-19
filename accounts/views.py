@@ -6,15 +6,30 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAdminUser, AllowAny
 from .serializers import UserSerializer, CompanyUserSerializer, CurrentUserSerializer, GroupSerializer, ChangePasswordSerializer, MyTokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
+import json
 
 
 
 class MyTokenObtainPairView(TokenObtainPairView):
+    serializer_class = MyTokenObtainPairSerializer
     permission_classes = (AllowAny,)
     authentication_classes = []
-    serializer_class = MyTokenObtainPairSerializer
 
     def post(self, request, *args, **kwargs):
+        # --- INÍCIO DO CÓDIGO DE DIAGNÓSTICO ---
+        print("="*50)
+        print("NOVO PEDIDO DE LOGIN RECEBIDO")
+        print("CABEÇALHOS (HEADERS):")
+        # Imprime todos os cabeçalhos do pedido
+        for header, value in request.headers.items():
+            print(f"  {header}: {value}")
+        
+        print("\nCORPO DO PEDIDO (BODY):")
+        # Imprime o corpo do pedido (raw)
+        print(f"  {request.body.decode('utf-8')}")
+        print("="*50)
+        # --- FIM DO CÓDIGO DE DIAGNÓSTICO ---
+
         response = super().post(request, *args, **kwargs)
 
         if response.status_code == 200:
