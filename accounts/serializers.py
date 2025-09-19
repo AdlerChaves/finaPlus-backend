@@ -11,6 +11,17 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         token['username'] = user.username
         return token
 
+    def validate(self, attrs):
+        # Verifica se a chave 'email' foi enviada na requisição
+        if 'email' in attrs:
+            # Renomeia a chave 'email' para 'username'
+            attrs['username'] = attrs.pop('email')
+        
+        # Chama o método de validação da classe pai com os dados ajustados
+        data = super().validate(attrs)
+        
+        return data
+
 class CompanySerializer(serializers.ModelSerializer):
     class Meta:
         model = Company
