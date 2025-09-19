@@ -135,21 +135,11 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 CORS_ALLOWED_ORIGINS = [
-    "https://localhost:5173", 
-    "https://127.0.0.1:5173", 
+    "http://localhost:5173", 
+    "http://127.0.0.1:5173", 
     "http://www.relda.com.br",
     "https://www.relda.com.br",
-    "localhost",  
-    "127.0.0.1",
-    "https://api.relda.com.br",  
 ]   
-
-CSRF_TRUSTED_ORIGINS = [
-    "https://www.relda.com.br",
-    "https://relda.com.br",
-    "https://localhost:5173",
-    "https://127.0.0.1:5173",
-]
 
 CORS_ALLOW_CREDENTIALS = True
 
