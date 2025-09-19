@@ -3,13 +3,15 @@ from rest_framework import generics, viewsets, permissions, status
 from rest_framework.response import Response
 from .models import User
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAdminUser
+from rest_framework.permissions import IsAdminUser, AllowAny
 from .serializers import UserSerializer, CompanyUserSerializer, CurrentUserSerializer, GroupSerializer, ChangePasswordSerializer, MyTokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 
 
 class MyTokenObtainPairView(TokenObtainPairView):
+    permission_classes = (AllowAny,)
+    authentication_classes = []
     serializer_class = MyTokenObtainPairSerializer
 
     def post(self, request, *args, **kwargs):
