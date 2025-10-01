@@ -15,6 +15,8 @@ class MyTokenObtainPairView(TokenObtainPairView):
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
 
+        print("A requisição chegou aqui", response.data)
+
         if response.status_code == 200:
             access_token = response.data.pop('access')
             refresh_token = response.data.pop('refresh')
@@ -25,14 +27,14 @@ class MyTokenObtainPairView(TokenObtainPairView):
                 'access_token',
                 access_token,
                 httponly=True,
-                samesite='Lax',
+                samesite='None',
                 # secure=True, # Lembre-se de descomentar em produção (HTTPS)
             )
             cookie_response.set_cookie(
                 'refresh_token',
                 refresh_token,
                 httponly=True,
-                samesite='Lax',
+                samesite='None',
                 # secure=True, # Lembre-se de descomentar em produção (HTTPS)
             )
             return cookie_response
